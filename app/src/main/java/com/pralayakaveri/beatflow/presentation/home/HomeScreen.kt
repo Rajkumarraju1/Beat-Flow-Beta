@@ -73,6 +73,7 @@ fun HomeScreen(
     val drivingPlaylist by viewModel.drivingPlaylist.collectAsState()
 
     val currentSong by mainViewModel.currentSong.collectAsState()
+    val isPlaying by mainViewModel.isPlaying.collectAsState()
 
     val tabs = listOf("Songs", "Playlists", "Albums", "Artists", "Folders", "Favorites")
     val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { tabs.size })
@@ -338,8 +339,12 @@ fun HomeScreen(
                                             0
                                         )
                                     },
-                                    onFavoritesClick = { selectedTabIndex = 5 },
-                                    onRecentlyPlayedClick = { selectedTabIndex = 1 }
+                                    onFavoritesClick = { 
+                                        coroutineScope.launch { pagerState.animateScrollToPage(5) }
+                                    },
+                                    onRecentlyPlayedClick = { 
+                                        coroutineScope.launch { pagerState.animateScrollToPage(1) }
+                                    }
                                 )
                             }
                         }

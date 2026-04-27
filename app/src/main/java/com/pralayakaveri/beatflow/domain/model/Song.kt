@@ -14,5 +14,6 @@ data class Song(
     val trackNumber: Int,
     val genre: String?,
     val uri: Uri,
-    val albumArtUri: Uri?
+    val albumArtUri: Uri?,
+    val isUnavailable: Boolean = false
 )

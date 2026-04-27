@@ -24,3 +24,10 @@ final_verification*.txt
 ui_fix*.txt
 ui_restore*.txt
 universe*.txt
+
+# Signing Keys
+*.jks
+*.jks.txt
+*.keystore
+secrets.properties
+

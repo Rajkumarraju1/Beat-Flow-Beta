@@ -23,6 +23,11 @@ object DatabaseModule {
             AppDatabase::class.java,
             "beatflow_db"
         )
+        .addMigrations(
+            AppDatabase.MIGRATION_8_9,
+            AppDatabase.MIGRATION_9_10,
+            AppDatabase.MIGRATION_10_11
+        )
         .fallbackToDestructiveMigration()
         .build()
     }
@@ -55,5 +60,30 @@ object DatabaseModule {
     @Provides
     fun provideArtistImageDao(database: AppDatabase): com.pralayakaveri.beatflow.data.local.ArtistImageDao {
         return database.artistImageDao()
+    }
+
+    @Provides
+    fun provideLibrarySongDao(database: AppDatabase): com.pralayakaveri.beatflow.data.local.LibrarySongDao {
+        return database.librarySongDao()
+    }
+
+    @Provides
+    fun provideLibraryIndexDao(database: AppDatabase): com.pralayakaveri.beatflow.data.local.LibraryIndexDao {
+        return database.libraryIndexDao()
+    }
+
+    @Provides
+    fun provideSearchIndexDao(database: AppDatabase): com.pralayakaveri.beatflow.data.local.SearchIndexDao {
+        return database.searchIndexDao()
+    }
+
+    @Provides
+    fun provideGalaxyIndexDao(database: AppDatabase): com.pralayakaveri.beatflow.data.local.GalaxyIndexDao {
+        return database.galaxyIndexDao()
+    }
+
+    @Provides
+    fun provideGalaxyAnchorDao(database: AppDatabase): com.pralayakaveri.beatflow.data.local.GalaxyAnchorDao {
+        return database.galaxyAnchorDao()
     }
 }

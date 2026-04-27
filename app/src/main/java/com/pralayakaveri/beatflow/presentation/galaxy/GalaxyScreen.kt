@@ -63,9 +63,6 @@ fun GalaxyScreen(
     val state = rememberTransformableState { zoomChange, offsetChange, _ ->
         zoom = (zoom * zoomChange).coerceIn(0.5f, 5f)
         offset += offsetChange
-        
-        // Interrupt animations on manual interaction
-        // (Simplified: we just let manual override state)
     }
 
     val textMeasurer = rememberTextMeasurer()
@@ -101,23 +98,6 @@ fun GalaxyScreen(
         ),
         label = "Pulse"
     )
-
-    // Fly-in effect on first focus
-    LaunchedEffect(initialFocusOffset) {
-        if (initialFocusOffset != Offset.Zero) {
-            val targetX = initialFocusOffset.x + 500f
-            val targetY = initialFocusOffset.y + 500f
-            scope.launch {
-                animX.animateTo(targetX, animationSpec = tween(1500, easing = FastOutSlowInEasing))
-            }
-            scope.launch {
-                animY.animateTo(targetY, animationSpec = tween(1500, easing = FastOutSlowInEasing))
-            }
-            scope.launch {
-                animZoom.animateTo(0.8f, animationSpec = tween(2000, easing = FastOutSlowInEasing))
-            }
-        }
-    }
 
     // Palette extraction
     LaunchedEffect(nodes) {
@@ -176,203 +156,221 @@ fun GalaxyScreen(
         },
         containerColor = Color.Black
     ) { padding ->
-        Box(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            StarBackground()
+            val centerX = with(androidx.compose.ui.platform.LocalDensity.current) { maxWidth.toPx() / 2f }
+            val centerY = with(androidx.compose.ui.platform.LocalDensity.current) { maxHeight.toPx() / 2f }
 
-            if (isLoading) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator(color = Color(0xFF42C6B9))
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            "Materializing Galaxy...",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = Color.White
-                        )
+            // Fly-in effect on first focus
+            LaunchedEffect(initialFocusOffset) {
+                if (initialFocusOffset != Offset.Zero) {
+                    val targetZoom = 0.7f
+                    val targetX = centerX + (initialFocusOffset.x * targetZoom)
+                    val targetY = centerY + (initialFocusOffset.y * targetZoom)
+                    
+                    scope.launch {
+                        animX.animateTo(targetX, animationSpec = tween(2500, easing = FastOutSlowInEasing))
+                    }
+                    scope.launch {
+                        animY.animateTo(targetY, animationSpec = tween(2500, easing = FastOutSlowInEasing))
+                    }
+                    scope.launch {
+                        animZoom.animateTo(targetZoom, animationSpec = tween(3000, easing = FastOutSlowInEasing))
                     }
                 }
             }
 
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .transformable(state = state)
-                    .pointerInput(Unit) {
-                        detectTapGestures { tapOffset ->
-                            val canvasTap = (tapOffset - offset) / zoom
-                            
-                            rippleCenter = canvasTap
-                            scope.launch {
-                                rippleRadius.snapTo(0f)
-                                rippleRadius.animateTo(2000f, animationSpec = tween(1000, easing = LinearOutSlowInEasing))
-                            }
+                modifier = Modifier.fillMaxSize()
+            ) {
+                StarBackground()
 
-                            var hitNode: GalaxyNode? = null
-                            nodes.forEach { genreNode ->
-                                if (zoom < 1.2f) {
-                                    if (isHit(canvasTap, genreNode, 70f)) hitNode = genreNode
-                                } else {
-                                    genreNode.children.forEach { artistNode ->
-                                        val artistPos = genreNode.position + artistNode.position * 0.3f
-                                        
-                                        if (zoom < 2.5f) {
-                                            if (isHit(canvasTap, artistNode.copy(position = artistPos), 50f)) hitNode = artistNode
-                                        } else {
-                                            artistNode.children.forEach { songNode ->
-                                                val animatedPos = getAnimatedSongPosition(songNode, artistPos, rotationAngle)
-                                                if (isHit(canvasTap, songNode.copy(position = animatedPos), 30f)) hitNode = songNode
+                if (isLoading) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator(color = Color(0xFF42C6B9))
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                "Materializing Galaxy...",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = Color.White
+                            )
+                        }
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .transformable(state = state)
+                        .pointerInput(Unit) {
+                            detectTapGestures { tapOffset ->
+                                val canvasTap = (tapOffset - offset) / zoom
+                                
+                                rippleCenter = canvasTap
+                                scope.launch {
+                                    rippleRadius.snapTo(0f)
+                                    rippleRadius.animateTo(2000f, animationSpec = tween(1000, easing = LinearOutSlowInEasing))
+                                }
+
+                                var hitNode: GalaxyNode? = null
+                                nodes.forEach { genreNode ->
+                                    if (zoom < 1.2f) {
+                                        if (isHit(canvasTap, genreNode, 70f)) hitNode = genreNode
+                                    } else {
+                                        genreNode.children.forEach { artistNode ->
+                                            val artistPos = genreNode.position + artistNode.position * 0.3f
+                                            
+                                            if (zoom < 2.5f) {
+                                                if (isHit(canvasTap, artistNode.copy(position = artistPos), 50f)) hitNode = artistNode
+                                            } else {
+                                                artistNode.children.forEach { songNode ->
+                                                    val animatedPos = getAnimatedSongPosition(songNode, artistPos, rotationAngle)
+                                                    if (isHit(canvasTap, songNode.copy(position = animatedPos), 30f)) hitNode = songNode
+                                                }
+                                                if (hitNode == null && isHit(canvasTap, artistNode.copy(position = artistPos), 50f)) hitNode = artistNode
                                             }
-                                            if (hitNode == null && isHit(canvasTap, artistNode.copy(position = artistPos), 50f)) hitNode = artistNode
                                         }
                                     }
                                 }
-                            }
 
-                            hitNode?.let { node ->
-                                selectedNodeId = node.id
-                                scope.launch {
-                                    glowAnimation.snapTo(1f)
-                                    glowAnimation.animateTo(0f, animationSpec = tween(500))
-                                    selectedNodeId = null
-                                }
+                                hitNode?.let { node ->
+                                    selectedNodeId = node.id
+                                    scope.launch {
+                                        glowAnimation.snapTo(1f)
+                                        glowAnimation.animateTo(0f, animationSpec = tween(500))
+                                        selectedNodeId = null
+                                    }
 
-                                if (node.type == NodeType.SONG && node.song != null) {
-                                    onPlaySong(node.song)
+                                    if (node.type == NodeType.SONG && node.song != null) {
+                                        onPlaySong(node.song)
+                                    }
                                 }
                             }
-                        }
-                    }
-            ) {
-                Canvas(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-                            scaleX = zoom
-                            scaleY = zoom
-                            translationX = offset.x
-                            translationY = offset.y
-                            transformOrigin = TransformOrigin(0f, 0f)
                         }
                 ) {
-                    // Draw Central Nebula
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            colors = listOf(
-                                Color(0xFF42C6B9).copy(alpha = 0.15f),
-                                Color(0xFF1A1A2E).copy(alpha = 0.05f),
-                                Color.Transparent
-                            ),
-                            center = Offset.Zero,
-                            radius = 2000f
-                        ),
-                        radius = 2000f,
-                        center = Offset.Zero
-                    )
-
-                    // Draw secondary nebulae
-                    nodes.take(5).forEach { node ->
+                    Canvas(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                scaleX = zoom
+                                scaleY = zoom
+                                translationX = offset.x
+                                translationY = offset.y
+                                transformOrigin = TransformOrigin(0f, 0f)
+                            }
+                    ) {
+                        // Draw Central Nebula
                         drawCircle(
                             brush = Brush.radialGradient(
                                 colors = listOf(
-                                    node.color.copy(alpha = 0.1f),
+                                    Color(0xFF42C6B9).copy(alpha = 0.15f),
+                                    Color(0xFF1A1A2E).copy(alpha = 0.05f),
                                     Color.Transparent
                                 ),
-                                center = node.position,
-                                radius = 1200f
+                                center = Offset.Zero,
+                                radius = 2000f
                             ),
-                            radius = 1200f,
-                            center = node.position
-                        )
-                    }
-
-                    // Ripple Draw
-                    if (rippleRadius.value > 0f) {
-                        drawCircle(
-                            color = Color.White.copy(alpha = (1f - rippleRadius.value / 2000f).coerceIn(0f, 0.2f)),
-                            radius = rippleRadius.value,
-                            center = rippleCenter,
-                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f / zoom)
-                        )
-                    }
-
-                    nodes.forEach { genreNode ->
-                        val showGenreLabel = zoom < 1.2f
-                        drawNode(
-                            node = genreNode,
-                            textMeasurer = textMeasurer,
-                            isHighlighted = selectedNodeId == genreNode.id,
-                            glowAmount = glowAnimation.value,
-                            showLabel = showGenreLabel,
-                            zoom = zoom,
-                            artwork = null,
-                            isCurrent = false
+                            radius = 2000f,
+                            center = Offset.Zero
                         )
 
-                        if (zoom > 0.8f) {
-                            genreNode.children.forEach { artistNode ->
-                                val artistPos = genreNode.position + artistNode.position * 0.3f
-                                
-                                if (zoom > 2.0f) {
-                                    val distinctRadii = artistNode.children.map { it.orbitRadius }.distinct()
-                                    distinctRadii.forEach { radius ->
-                                        drawCircle(
-                                            color = Color.White.copy(alpha = 0.05f),
-                                            radius = radius,
-                                            center = artistPos,
-                                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1f / zoom)
-                                        )
+                        // Draw secondary nebulae
+                        nodes.take(5).forEach { node ->
+                            drawCircle(
+                                brush = Brush.radialGradient(
+                                    colors = listOf(
+                                        node.color.copy(alpha = 0.1f),
+                                        Color.Transparent
+                                    ),
+                                    center = node.position,
+                                    radius = 1200f
+                                ),
+                                radius = 1200f,
+                                center = node.position
+                            )
+                        }
+
+                        // Ripple Draw
+                        if (rippleRadius.value > 0f) {
+                            drawCircle(
+                                color = Color.White.copy(alpha = (1f - rippleRadius.value / 2000f).coerceIn(0f, 0.2f)),
+                                radius = rippleRadius.value,
+                                center = rippleCenter,
+                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f / zoom)
+                            )
+                        }
+
+                        nodes.forEach { genreNode ->
+                            val showGenreLabel = zoom < 1.2f
+                            drawNode(
+                                node = genreNode,
+                                textMeasurer = textMeasurer,
+                                isHighlighted = selectedNodeId == genreNode.id,
+                                glowAmount = glowAnimation.value,
+                                showLabel = showGenreLabel,
+                                zoom = zoom,
+                                artwork = null,
+                                isCurrent = false
+                            )
+
+                            if (zoom > 0.8f) {
+                                genreNode.children.forEach { artistNode ->
+                                    val artistPos = genreNode.position + artistNode.position * 0.3f
+                                    
+                                    if (zoom > 2.0f) {
+                                        val distinctRadii = artistNode.children.map { it.orbitRadius }.distinct()
+                                        distinctRadii.forEach { radius ->
+                                            drawCircle(
+                                                color = Color.White.copy(alpha = 0.05f),
+                                                radius = radius,
+                                                center = artistPos,
+                                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1f / zoom)
+                                            )
+                                        }
                                     }
-                                }
 
-                                drawNode(
-                                    node = artistNode.copy(position = artistPos),
-                                    textMeasurer = textMeasurer,
-                                    isHighlighted = selectedNodeId == artistNode.id,
-                                    glowAmount = glowAnimation.value,
-                                    showLabel = zoom in 1.2f..4.0f,
-                                    zoom = zoom,
-                                    artwork = null,
-                                    isCurrent = false
-                                )
+                                    drawNode(
+                                        node = artistNode.copy(position = artistPos),
+                                        textMeasurer = textMeasurer,
+                                        isHighlighted = selectedNodeId == artistNode.id,
+                                        glowAmount = glowAnimation.value,
+                                        showLabel = zoom in 1.2f..4.0f,
+                                        zoom = zoom,
+                                        artwork = null,
+                                        isCurrent = false
+                                    )
 
-                                if (zoom > 2.5f) {
-                                    artistNode.children.forEach { songNode ->
-                                        val animatedPos = getAnimatedSongPosition(songNode, artistPos, rotationAngle)
-                                        val isCurrentlyPlaying = currentSong?.id == songNode.song?.id
-                                        val songColor = extractedColors[songNode.song?.id] ?: songNode.color
+                                    if (zoom > 2.5f) {
+                                        artistNode.children.forEach { songNode ->
+                                            val animatedPos = getAnimatedSongPosition(songNode, artistPos, rotationAngle)
+                                            val isCurrentlyPlaying = currentSong?.id == songNode.song?.id
+                                            val songColor = extractedColors[songNode.song?.id] ?: songNode.color
 
-                                        drawNode(
-                                            node = songNode.copy(position = animatedPos, color = songColor),
-                                            textMeasurer = textMeasurer,
-                                            isHighlighted = selectedNodeId == songNode.id,
-                                            glowAmount = if (isCurrentlyPlaying) pulseScale else glowAnimation.value,
-                                            showLabel = zoom > 4.5f,
-                                            zoom = zoom,
-                                            artwork = bitmaps[songNode.song?.id],
-                                            isCurrent = isCurrentlyPlaying,
-                                            pulseFactor = if (isCurrentlyPlaying) pulseScale else 1f
-                                        )
+                                            drawNode(
+                                                node = songNode.copy(position = animatedPos, color = songColor),
+                                                textMeasurer = textMeasurer,
+                                                isHighlighted = selectedNodeId == songNode.id,
+                                                glowAmount = glowAnimation.value,
+                                                showLabel = zoom > 3.5f,
+                                                zoom = zoom,
+                                                artwork = bitmaps[songNode.song?.id],
+                                                isCurrent = isCurrentlyPlaying,
+                                                pulseFactor = if (isCurrentlyPlaying && isPlaying) pulseScale else 1f
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                 }
-
-                // Zoom indicator
-                Text(
-                    text = "Zoom: ${"%.1f".format(zoom)}x",
-                    color = Color.White.copy(alpha = 0.5f),
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
-                    fontSize = 12.sp
-                )
             }
         }
     }
@@ -381,8 +379,7 @@ fun GalaxyScreen(
 private fun isHit(tap: Offset, node: GalaxyNode, radius: Float): Boolean {
     val dx = tap.x - node.position.x
     val dy = tap.y - node.position.y
-    val distance = kotlin.math.sqrt(dx * dx + dy * dy)
-    return distance <= radius * 1.5f
+    return (dx * dx + dy * dy) <= (radius * radius)
 }
 
 private fun DrawScope.drawNode(

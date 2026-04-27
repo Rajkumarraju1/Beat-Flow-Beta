@@ -1,21 +1,42 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# --- Hilt / Dagger ---
+-keep class dagger.hilt.** { *; }
+-keep interface dagger.hilt.** { *; }
+-keep @dagger.hilt.android.lifecycle.HiltViewModel class * { *; }
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# --- Room ---
+-keep class * extends androidx.room.RoomDatabase
+-keep @androidx.room.Entity class * { *; }
+-keep @androidx.room.Dao class * { *; }
+-keep @androidx.room.Database class * { *; }
+-keep @androidx.room.RawQuery class * { *; }
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# --- Media3 / ExoPlayer ---
+-keep class androidx.media3.** { *; }
+-keep interface androidx.media3.** { *; }
+-keep class com.google.android.exoplayer2.** { *; }
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# --- Data Models (Reflection / Serialization) ---
+# Protect Domain models and Room Entities used in Galaxy/Search
+-keep class com.pralayakaveri.beatflow.domain.model.** { *; }
+-keep class com.pralayakaveri.beatflow.data.local.** { *; }
+-keep class com.pralayakaveri.beatflow.presentation.galaxy.GalaxyNode { *; }
+-keep enum com.pralayakaveri.beatflow.presentation.galaxy.NodeType { *; }
+
+# --- Kotlin Serialization / Coroutines ---
+-keepattributes *Annotation*, InnerClasses, Signature, Exceptions
+-keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}
+-keepnames class kotlinx.coroutines.CoroutineExceptionHandler {}
+-keepclassmembernames class kotlinx.coroutines.android.HandlerContext$ScheduledAt {
+    long nanos;
+}
+
+# --- Coil ---
+-keep class coil.** { *; }
+
+# --- Kotlin Reflect ---
+-keep class kotlin.reflect.jvm.internal.** { *; }
+
+# --- General Hardening ---
+-dontwarn androidx.media3.**
+-dontwarn com.google.common.**
+-dontwarn org.checkerframework.**

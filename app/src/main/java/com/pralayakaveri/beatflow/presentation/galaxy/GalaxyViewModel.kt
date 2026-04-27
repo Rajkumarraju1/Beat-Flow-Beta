@@ -63,7 +63,7 @@ class GalaxyViewModel @Inject constructor(
                 // Apply a global limit for total songs handled in Galaxy Mode for performance
                 val limitedSongs = songs.take(1000) 
                 
-                val genreGroups = limitedSongs.groupBy { it.genre ?: "Unknown" }
+                val genreGroups = limitedSongs.groupBy { it.genre ?: "Interstellar Void" }
                 val genreNodes = genreGroups.entries.mapIndexed { gIndex, (genre, genreSongs) ->
                     val artistGroups = genreSongs.groupBy { it.artist }
                     
@@ -114,8 +114,24 @@ class GalaxyViewModel @Inject constructor(
                 }
                 _nodes.value = genreNodes
                 if (genreNodes.isNotEmpty()) {
-                    // Set initial focus to the first genre node
-                    _initialFocusOffset.value = -genreNodes.first().position
+                    // Calculate the visual bounding box of the galaxy for "Fit-to-Bounds" framing
+                    var minX = Float.MAX_VALUE
+                    var maxX = Float.MIN_VALUE
+                    var minY = Float.MAX_VALUE
+                    var maxY = Float.MIN_VALUE
+                    
+                    genreNodes.forEach {
+                        minX = minOf(minX, it.position.x)
+                        maxX = maxOf(maxX, it.position.x)
+                        minY = minOf(minY, it.position.y)
+                        maxY = maxOf(maxY, it.position.y)
+                    }
+                    
+                    val midX = (minX + maxX) / 2f
+                    val midY = (minY + maxY) / 2f
+                    
+                    // Initial focus on the geometric midpoint of the bounds
+                    _initialFocusOffset.value = Offset(-midX, -midY)
                 }
                 _isLoading.value = false
             }
@@ -123,9 +139,9 @@ class GalaxyViewModel @Inject constructor(
     }
 
     private fun getSpiralOffset(index: Int, scale: Float): Offset {
-        // Increase spread angle and add a significant initial radius for center breathing room
+        // Reduced initial radius to avoid a large "black hole" at the center
         val angle = index * 0.7f 
-        val initialRadius = 500f // Even more breathing room at the beginning
+        val initialRadius = 150f 
         val radius = initialRadius + (scale * 1.5f) * kotlin.math.sqrt(index.toFloat() + 1f)
         
         return Offset(

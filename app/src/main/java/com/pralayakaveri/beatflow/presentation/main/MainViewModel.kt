@@ -429,4 +429,10 @@ class MainViewModel @Inject constructor(
     fun invalidateSongCache() {
         musicRepository.invalidateSongCache()
     }
+
+    fun startInitialSync() {
+        viewModelScope.launch {
+            musicRepository.startSync(com.pralayakaveri.beatflow.domain.engine.TriggerReason.INITIAL_SCAN)
+        }
+    }
 }

@@ -17,6 +17,56 @@ class MediaStoreProvider @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
 
+    data class MediaStoreHeadless(
+        val id: Long,
+        val path: String,
+        val size: Long,
+        val dateModified: Long
+    )
+
+    suspend fun getHeadlessSongs(): List<MediaStoreHeadless> = withContext(Dispatchers.IO) {
+        val result = mutableListOf<MediaStoreHeadless>()
+        val collection = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        } else {
+            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+        }
+
+        val projection = arrayOf(
+            MediaStore.Audio.Media._ID,
+            MediaStore.Audio.Media.DATA,
+            MediaStore.Audio.Media.SIZE,
+            MediaStore.Audio.Media.DATE_MODIFIED
+        )
+
+        val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
+
+        context.contentResolver.query(
+            collection,
+            projection,
+            selection,
+            null,
+            null
+        )?.use { cursor ->
+            val idCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
+            val dataCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)
+            val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.SIZE)
+            val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_MODIFIED)
+
+            while (cursor.moveToNext()) {
+                result.add(
+                    MediaStoreHeadless(
+                        id = cursor.getLong(idCol),
+                        path = cursor.getString(dataCol) ?: "",
+                        size = cursor.getLong(sizeCol),
+                        dateModified = cursor.getLong(dateCol)
+                    )
+                )
+            }
+        }
+        result
+    }
+
     suspend fun getAllSongs(): List<Song> = withContext(Dispatchers.IO) {
         val songs = mutableListOf<Song>()
         
@@ -60,10 +110,10 @@ class MediaStoreProvider @Inject constructor(
 
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(idColumn)
-                val title = cursor.getString(titleColumn) ?: "Unknown"
-                val artist = cursor.getString(artistColumn) ?: "Unknown"
+                val title = cursor.getString(titleColumn) ?: "Cosmic Signal"
+                val artist = cursor.getString(artistColumn) ?: "Stellar Resonance"
                 val artistId = cursor.getLong(artistIdColumn)
-                val album = cursor.getString(albumColumn) ?: "Unknown"
+                val album = cursor.getString(albumColumn) ?: "The Singularity"
                 val albumId = cursor.getLong(albumIdColumn)
                 val duration = cursor.getLong(durationColumn)
                 val dataPath = cursor.getString(dataColumn) ?: ""
@@ -157,5 +207,59 @@ class MediaStoreProvider @Inject constructor(
 
     fun getAllSongsFlow(): kotlinx.coroutines.flow.Flow<List<Song>> = kotlinx.coroutines.flow.flow {
         emit(getAllSongs())
+    }
+
+    suspend fun getSongsByIds(ids: List<Long>): List<Song> = withContext(Dispatchers.IO) {
+        if (ids.isEmpty()) return@withContext emptyList()
+        
+        val songs = mutableListOf<Song>()
+        val collection = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        } else {
+            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+        }
+
+        val projection = arrayOf(
+            MediaStore.Audio.Media._ID, MediaStore.Audio.Media.TITLE, MediaStore.Audio.Media.ARTIST,
+            MediaStore.Audio.Media.ARTIST_ID, MediaStore.Audio.Media.ALBUM, MediaStore.Audio.Media.ALBUM_ID,
+            MediaStore.Audio.Media.DURATION, MediaStore.Audio.Media.DATA, MediaStore.Audio.Media.TRACK
+        )
+
+        val idList = ids.joinToString(",")
+        val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0 AND ${MediaStore.Audio.Media._ID} IN ($idList)"
+
+        context.contentResolver.query(collection, projection, selection, null, null)?.use { cursor ->
+            val idCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
+            val titleCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
+            val artistCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
+            val artistIdCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST_ID)
+            val albumCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
+            val albumIdCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
+            val durationCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
+            val dataCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)
+            val trackCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TRACK)
+
+            while (cursor.moveToNext()) {
+                val id = cursor.getLong(idCol)
+                val albumId = cursor.getLong(albumIdCol)
+                songs.add(
+                    Song(
+                        id = id,
+                        title = cursor.getString(titleCol) ?: "Unknown",
+                        artist = cursor.getString(artistCol) ?: "Unknown",
+                        artistId = cursor.getLong(artistIdCol),
+                        album = cursor.getString(albumCol) ?: "Unknown",
+                        albumId = albumId,
+                        duration = cursor.getLong(durationCol),
+                        dataPath = cursor.getString(dataCol) ?: "",
+                        trackNumber = cursor.getInt(trackCol),
+                        genre = null,
+                        uri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id),
+                        albumArtUri = ContentUris.withAppendedId(Uri.parse("content://media/external/audio/albumart"), albumId)
+                    )
+                )
+            }
+        }
+        songs
     }
 }

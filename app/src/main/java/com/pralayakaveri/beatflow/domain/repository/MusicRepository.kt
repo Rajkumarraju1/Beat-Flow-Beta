@@ -39,4 +39,5 @@ interface MusicRepository {
     suspend fun addSongToPlaylist(playlistId: Long, songId: Long)
     suspend fun removeSongFromPlaylist(playlistId: Long, songId: Long)
     fun invalidateSongCache()
+    suspend fun startSync(reason: com.pralayakaveri.beatflow.domain.engine.TriggerReason)
 }

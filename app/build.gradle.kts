@@ -14,8 +14,8 @@ android {
         applicationId = "com.pralayakaveri.orbitmusic"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.0-beta01"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -72,6 +72,7 @@ dependencies {
     // Room
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
+    implementation(libs.androidx.room.common)
     ksp(libs.androidx.room.compiler)
 
     // Media3
@@ -85,7 +86,6 @@ dependencies {
     // Palette
     implementation(libs.androidx.palette.ktx)
 
-    // DataStore (Preferences)
     implementation("androidx.datastore:datastore-preferences:1.0.0")
 
     // JAudioTagger for ID3 Lyrics extraction

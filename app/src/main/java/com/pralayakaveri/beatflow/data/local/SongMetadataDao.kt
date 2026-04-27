@@ -15,4 +15,7 @@ interface SongMetadataDao {
 
     @Query("SELECT songId FROM song_metadata")
     suspend fun getAllScannedIds(): List<Long>
+
+    @Query("DELETE FROM song_metadata WHERE songId = :songId")
+    suspend fun deleteMetadata(songId: Long)
 }

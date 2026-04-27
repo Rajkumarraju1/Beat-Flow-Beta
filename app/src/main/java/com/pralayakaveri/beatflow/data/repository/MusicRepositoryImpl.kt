@@ -1,8 +1,10 @@
 package com.pralayakaveri.beatflow.data.repository
 
-import com.pralayakaveri.beatflow.data.local.FavoriteSongEntity
-import com.pralayakaveri.beatflow.data.local.FavoritesDao
+import android.net.Uri
+import com.pralayakaveri.beatflow.data.local.*
 import com.pralayakaveri.beatflow.data.provider.MediaStoreProvider
+import com.pralayakaveri.beatflow.domain.engine.IndexingMode
+import com.pralayakaveri.beatflow.domain.engine.LibraryIndexingEngine
 import com.pralayakaveri.beatflow.domain.model.Album
 import com.pralayakaveri.beatflow.domain.model.Artist
 import com.pralayakaveri.beatflow.domain.model.Song
@@ -10,6 +12,8 @@ import com.pralayakaveri.beatflow.domain.repository.MusicRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flow
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -17,20 +21,35 @@ import javax.inject.Singleton
 class MusicRepositoryImpl @Inject constructor(
     private val mediaStoreProvider: MediaStoreProvider,
     private val favoritesDao: FavoritesDao,
-    private val playCountDao: com.pralayakaveri.beatflow.data.local.PlayCountDao,
-    private val metadataDao: com.pralayakaveri.beatflow.data.local.SongMetadataDao,
-    private val customArtworkDao: com.pralayakaveri.beatflow.data.local.CustomArtworkDao,
-    private val playlistDao: com.pralayakaveri.beatflow.data.local.PlaylistDao,
-    private val artistImageDao: com.pralayakaveri.beatflow.data.local.ArtistImageDao
+    private val playCountDao: PlayCountDao,
+    private val metadataDao: SongMetadataDao,
+    private val customArtworkDao: CustomArtworkDao,
+    private val playlistDao: PlaylistDao,
+    private val artistImageDao: ArtistImageDao,
+    private val librarySongDao: LibrarySongDao,
+    private val indexingEngine: LibraryIndexingEngine
 ) : MusicRepository {
 
     private var cachedSongs: List<Song> = emptyList()
 
     override suspend fun getSongs(): List<Song> {
-        if (cachedSongs.isEmpty()) {
-            cachedSongs = mediaStoreProvider.getAllSongs()
+        return when (indexingEngine.mode) {
+            IndexingMode.LEGACY, IndexingMode.SHADOW -> {
+                if (cachedSongs.isEmpty()) {
+                    cachedSongs = mediaStoreProvider.getAllSongs()
+                }
+                cachedSongs
+            }
+            IndexingMode.ACTIVE -> {
+                val songsWithIndex = librarySongDao.getAllSongsWithIndexSingle()
+                if (songsWithIndex.isEmpty()) {
+                    indexingEngine.startSync()
+                    mediaStoreProvider.getAllSongs()
+                } else {
+                    songsWithIndex.map { it.toDomain() }
+                }
+            }
         }
-        return cachedSongs
     }
 
     override suspend fun getAlbums(): List<Album> {
@@ -43,7 +62,7 @@ class MusicRepositoryImpl @Inject constructor(
                 artist = firstSong.artist,
                 artistId = firstSong.artistId,
                 songCount = albumSongs.size,
-                year = 0, // MediaStore year extraction optionally
+                year = 0,
                 albumArtUri = firstSong.albumArtUri
             )
         }.sortedBy { it.title }
@@ -63,8 +82,10 @@ class MusicRepositoryImpl @Inject constructor(
     }
 
     override fun getFavoriteSongs(): Flow<List<Song>> {
-        return favoritesDao.getAllFavorites().map { favoriteEntities ->
-            val allSongs = getSongs()
+        return combine(
+            favoritesDao.getAllFavorites(),
+            getAllSongs()
+        ) { favoriteEntities, allSongs ->
             val songsMap = allSongs.associateBy { it.id }
             favoriteEntities.mapNotNull { entity ->
                 songsMap[entity.id]
@@ -73,7 +94,7 @@ class MusicRepositoryImpl @Inject constructor(
     }
 
     override suspend fun toggleFavorite(songId: Long) {
-        val isFav = favoritesDao.isFavorite(songId).first()
+        val isFav = favoritesDao.isFavoriteSingle(songId)
         if (isFav) {
             favoritesDao.removeFavorite(FavoriteSongEntity(songId, System.currentTimeMillis()))
         } else {
@@ -89,7 +110,7 @@ class MusicRepositoryImpl @Inject constructor(
         val existing = playCountDao.getPlayCountById(songId)
         val newCount = (existing?.playCount ?: 0) + 1
         playCountDao.insertOrUpdate(
-            com.pralayakaveri.beatflow.data.local.PlayCountEntity(
+            PlayCountEntity(
                 songId = songId,
                 playCount = newCount,
                 lastPlayed = System.currentTimeMillis()
@@ -120,14 +141,18 @@ class MusicRepositoryImpl @Inject constructor(
     }
 
     override fun getAllSongs(): Flow<List<Song>> {
-        return mediaStoreProvider.getAllSongsFlow()
+        return when (indexingEngine.mode) {
+            IndexingMode.LEGACY, IndexingMode.SHADOW -> mediaStoreProvider.getAllSongsFlow()
+            IndexingMode.ACTIVE -> librarySongDao.getAllSongs().map { entities ->
+                entities.map { it.toDomain() }
+            }
+        }
     }
 
     override suspend fun getForgottenSongs(limit: Int): List<Song> {
         val allSongs = getSongs()
         val playCounts = playCountDao.getAllPlayCounts().associateBy { it.songId }
         
-        // Songs with 0 or 1 plays, sorted by title (or could be by date if available)
         return allSongs.filter { song ->
             val pc = playCounts[song.id]?.playCount ?: 0
             pc <= 1
@@ -138,14 +163,13 @@ class MusicRepositoryImpl @Inject constructor(
         val favorites = getFavoriteSongs().first()
         val playCounts = playCountDao.getAllPlayCounts().associateBy { it.songId }
 
-        // Favorites with less than 5 plays
         return favorites.filter { song ->
             val pc = playCounts[song.id]?.playCount ?: 0
             pc < 5
         }.take(limit)
     }
 
-    override suspend fun getAllSongMetadata(): List<com.pralayakaveri.beatflow.data.local.SongMetadataEntity> {
+    override suspend fun getAllSongMetadata(): List<SongMetadataEntity> {
         return metadataDao.getAllMetadata()
     }
 
@@ -156,9 +180,7 @@ class MusicRepositoryImpl @Inject constructor(
     }
 
     override suspend fun saveCustomArtwork(songId: Long, uri: String) {
-        customArtworkDao.insertCustomArtwork(
-            com.pralayakaveri.beatflow.data.local.CustomArtworkEntity(songId, uri)
-        )
+        customArtworkDao.insertCustomArtwork(CustomArtworkEntity(songId, uri))
     }
 
     override suspend fun removeCustomArtwork(songId: Long) {
@@ -166,22 +188,17 @@ class MusicRepositoryImpl @Inject constructor(
     }
 
     override fun getPlaylists(): Flow<List<com.pralayakaveri.beatflow.domain.model.Playlist>> {
-        return kotlinx.coroutines.flow.combine(
+        return combine(
             playlistDao.getAllPlaylists(),
             playlistDao.getAllPlaylistSongs(),
-            kotlinx.coroutines.flow.flow { emit(getSongs()) }
+            getAllSongs()
         ) { playlistEntities, crossRefs, allSongs ->
-            
-            // Map songs by ID for quick lookup
             val songMap = allSongs.associateBy { it.id }
-            
-            // Group cross refs by playlistId
             val crossRefsByPlaylistId = crossRefs.groupBy { it.playlistId }
 
             playlistEntities.map { entity ->
                 val refsForThisPlaylist = crossRefsByPlaylistId[entity.id] ?: emptyList()
                 val sortedRefs = refsForThisPlaylist.sortedBy { it.addedAt }
-                
                 val songsInPlaylist = sortedRefs.mapNotNull { ref -> songMap[ref.songId] }
                 
                 com.pralayakaveri.beatflow.domain.model.Playlist(
@@ -194,9 +211,7 @@ class MusicRepositoryImpl @Inject constructor(
     }
 
     override suspend fun createPlaylist(name: String): Long {
-        return playlistDao.insertPlaylist(
-            com.pralayakaveri.beatflow.data.local.PlaylistEntity(name = name)
-        )
+        return playlistDao.insertPlaylist(PlaylistEntity(name = name))
     }
 
     override suspend fun deletePlaylist(playlistId: Long) {
@@ -204,12 +219,7 @@ class MusicRepositoryImpl @Inject constructor(
     }
 
     override suspend fun addSongToPlaylist(playlistId: Long, songId: Long) {
-        playlistDao.insertSongToPlaylist(
-            com.pralayakaveri.beatflow.data.local.PlaylistSongCrossRef(
-                playlistId = playlistId,
-                songId = songId
-            )
-        )
+        playlistDao.insertSongToPlaylist(PlaylistSongCrossRef(playlistId, songId))
     }
 
     override suspend fun removeSongFromPlaylist(playlistId: Long, songId: Long) {
@@ -223,9 +233,7 @@ class MusicRepositoryImpl @Inject constructor(
     }
 
     override suspend fun saveArtistImage(artistName: String, uri: String) {
-        artistImageDao.insertArtistImage(
-            com.pralayakaveri.beatflow.data.local.ArtistImageEntity(artistName, uri)
-        )
+        artistImageDao.insertArtistImage(ArtistImageEntity(artistName, uri))
     }
 
     override suspend fun removeArtistImage(artistName: String) {
@@ -234,5 +242,26 @@ class MusicRepositoryImpl @Inject constructor(
 
     override fun invalidateSongCache() {
         cachedSongs = emptyList()
+    }
+
+    override suspend fun startSync(reason: com.pralayakaveri.beatflow.domain.engine.TriggerReason) {
+        indexingEngine.startSync(reason)
+    }
+
+    private fun LibrarySongEntity.toDomain(): Song {
+        return Song(
+            id = id,
+            title = title,
+            artist = artist,
+            artistId = artistId,
+            album = album,
+            albumId = albumId,
+            duration = duration,
+            dataPath = dataPath,
+            trackNumber = trackNumber,
+            genre = null,
+            uri = Uri.parse(uriString),
+            albumArtUri = albumArtUriString?.let { Uri.parse(it) }
+        )
     }
 }

@@ -12,6 +12,9 @@ interface FavoritesDao {
     @Query("SELECT * FROM favorites ORDER BY dateAdded DESC")
     fun getAllFavorites(): Flow<List<FavoriteSongEntity>>
 
+    @Query("SELECT * FROM favorites")
+    suspend fun getAllFavoritesSingle(): List<FavoriteSongEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun addFavorite(favorite: FavoriteSongEntity)
 
@@ -20,4 +23,7 @@ interface FavoritesDao {
     
     @Query("SELECT EXISTS(SELECT 1 FROM favorites WHERE id = :songId)")
     fun isFavorite(songId: Long): Flow<Boolean>
+
+    @Query("SELECT EXISTS(SELECT 1 FROM favorites WHERE id = :songId)")
+    suspend fun isFavoriteSingle(songId: Long): Boolean
 }
