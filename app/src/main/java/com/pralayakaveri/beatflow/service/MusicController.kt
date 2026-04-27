@@ -1,0 +1,187 @@
+package com.pralayakaveri.beatflow.service
+
+import android.content.ComponentName
+import android.content.Context
+import androidx.core.content.ContextCompat
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.session.MediaBrowser
+import androidx.media3.session.SessionToken
+import com.google.common.util.concurrent.ListenableFuture
+import com.pralayakaveri.beatflow.domain.model.Song
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+import javax.inject.Singleton
+
+class MusicController @Inject constructor(
+    @ApplicationContext private val context: Context,
+    private val musicRepository: com.pralayakaveri.beatflow.domain.repository.MusicRepository
+) {
+    private var browserFuture: ListenableFuture<MediaBrowser>? = null
+    private var mediaBrowser: MediaBrowser? = null
+
+    private val _isPlaying = MutableStateFlow(false)
+    val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
+
+    private val _currentSongIndex = MutableStateFlow(-1)
+    
+    // Store current playlist for quick lookup
+    private var currentPlaylist: List<Song> = emptyList()
+    
+    private val _currentSong = MutableStateFlow<Song?>(null)
+    val currentSong: StateFlow<Song?> = _currentSong.asStateFlow()
+
+    private var lastPlayedIndex = -1
+
+    private val playerListener = object : Player.Listener {
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            _isPlaying.value = isPlaying
+            if (isPlaying) {
+                val index = mediaBrowser?.currentMediaItemIndex ?: -1
+                if (index != -1 && index != lastPlayedIndex && index in currentPlaylist.indices) {
+                    val songId = currentPlaylist[index].id
+                    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                        musicRepository.incrementPlayCount(songId)
+                    }
+                    lastPlayedIndex = index
+                }
+            }
+        }
+        
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            super.onMediaItemTransition(mediaItem, reason)
+            val index = mediaBrowser?.currentMediaItemIndex ?: -1
+            _currentSongIndex.value = index
+            _currentSong.value = if (index in currentPlaylist.indices) currentPlaylist[index] else null
+            
+            // Reset tracker if user skipped before audio actively 'played'
+            if (!_isPlaying.value) {
+                lastPlayedIndex = -1
+            }
+        }
+    }
+
+    private val _shuffleModeEnabled = MutableStateFlow(false)
+    val shuffleModeEnabled: StateFlow<Boolean> = _shuffleModeEnabled.asStateFlow()
+
+    private val _repeatMode = MutableStateFlow(Player.REPEAT_MODE_OFF)
+    val repeatMode: StateFlow<Int> = _repeatMode.asStateFlow()
+
+    private val _sleepTimerTimeRemaining = MutableStateFlow<Long?>(null)
+    val sleepTimerTimeRemaining: StateFlow<Long?> = _sleepTimerTimeRemaining.asStateFlow()
+
+    private var sleepTimer: android.os.CountDownTimer? = null
+
+    init {
+        val sessionToken = SessionToken(context, ComponentName(context, MusicPlaybackService::class.java))
+        browserFuture = MediaBrowser.Builder(context, sessionToken).buildAsync()
+        browserFuture?.addListener({
+            mediaBrowser = browserFuture?.get()
+            mediaBrowser?.addListener(playerListener)
+            
+            mediaBrowser?.let {
+                _shuffleModeEnabled.value = it.shuffleModeEnabled
+                _repeatMode.value = it.repeatMode
+            }
+        }, ContextCompat.getMainExecutor(context))
+    }
+
+    fun toggleShuffle() {
+        mediaBrowser?.let {
+            val isEnabled = !it.shuffleModeEnabled
+            it.shuffleModeEnabled = isEnabled
+            _shuffleModeEnabled.value = isEnabled
+        }
+    }
+
+    fun toggleRepeat() {
+        mediaBrowser?.let {
+            val nextMode = when (it.repeatMode) {
+                Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+                Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+                else -> Player.REPEAT_MODE_OFF
+            }
+            it.repeatMode = nextMode
+            _repeatMode.value = nextMode
+        }
+    }
+
+    fun playSongs(songs: List<Song>, startIndex: Int = 0) {
+        currentPlaylist = songs
+        mediaBrowser?.let { browser ->
+            val mediaItems = songs.map { song ->
+                MediaItem.Builder()
+                    .setUri(song.uri)
+                    .setMediaId(song.id.toString())
+                    .build()
+            }
+            browser.setMediaItems(mediaItems)
+            browser.seekToDefaultPosition(startIndex)
+            browser.prepare()
+            browser.play()
+        }
+    }
+    
+    fun togglePlayPause() {
+        mediaBrowser?.let {
+            if (it.isPlaying) it.pause() else it.play()
+        }
+    }
+    
+    fun skipToNext() {
+        mediaBrowser?.seekToNext()
+    }
+    
+    fun skipToPrevious() {
+        mediaBrowser?.seekToPrevious()
+    }
+    
+    fun seekTo(position: Long) {
+        mediaBrowser?.seekTo(position)
+    }
+    
+    fun getCurrentPosition(): Long = mediaBrowser?.currentPosition ?: 0L
+    fun getDuration(): Long = mediaBrowser?.duration ?: 0L
+
+    /**
+     * Fallback for visualizer. Primary audioSessionId management is now handled
+     * via [VisualizerHelper] in the [MusicPlaybackService].
+     */
+    fun getAudioSessionId(): Int {
+        return mediaBrowser?.sessionExtras?.getInt("audio_session_id") ?: 0
+    }
+
+    fun setSleepTimer(minutes: Int) {
+        cancelSleepTimer() // cancel existing
+        if (minutes <= 0) return
+
+        val durationMs = minutes * 60 * 1000L
+        sleepTimer = object : android.os.CountDownTimer(durationMs, 1000) {
+            override fun onTick(millisUntilFinished: Long) {
+                _sleepTimerTimeRemaining.value = millisUntilFinished
+            }
+
+            override fun onFinish() {
+                _sleepTimerTimeRemaining.value = null
+                mediaBrowser?.pause()
+            }
+        }.start()
+    }
+
+    fun cancelSleepTimer() {
+        sleepTimer?.cancel()
+        sleepTimer = null
+        _sleepTimerTimeRemaining.value = null
+    }
+
+    fun destroy() {
+        cancelSleepTimer()
+        browserFuture?.let {
+            MediaBrowser.releaseFuture(it)
+        }
+    }
+}
