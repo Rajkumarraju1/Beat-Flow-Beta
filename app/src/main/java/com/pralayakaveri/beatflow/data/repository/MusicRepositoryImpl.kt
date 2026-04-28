@@ -8,6 +8,7 @@ import com.pralayakaveri.beatflow.domain.engine.LibraryIndexingEngine
 import com.pralayakaveri.beatflow.domain.model.Album
 import com.pralayakaveri.beatflow.domain.model.Artist
 import com.pralayakaveri.beatflow.domain.model.Song
+import com.pralayakaveri.beatflow.domain.model.SortOrder
 import com.pralayakaveri.beatflow.domain.repository.MusicRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -27,7 +28,8 @@ class MusicRepositoryImpl @Inject constructor(
     private val playlistDao: PlaylistDao,
     private val artistImageDao: ArtistImageDao,
     private val librarySongDao: LibrarySongDao,
-    private val indexingEngine: LibraryIndexingEngine
+    private val indexingEngine: LibraryIndexingEngine,
+    private val libraryPreferencesManager: LibraryPreferencesManager
 ) : MusicRepository {
 
     private var cachedSongs: List<Song> = emptyList()
@@ -141,10 +143,26 @@ class MusicRepositoryImpl @Inject constructor(
     }
 
     override fun getAllSongs(): Flow<List<Song>> {
-        return when (indexingEngine.mode) {
+        val songsFlow = when (indexingEngine.mode) {
             IndexingMode.LEGACY, IndexingMode.SHADOW -> mediaStoreProvider.getAllSongsFlow()
             IndexingMode.ACTIVE -> librarySongDao.getAllSongs().map { entities ->
                 entities.map { it.toDomain() }
+            }
+        }
+
+        return combine(
+            songsFlow,
+            libraryPreferencesManager.sortOrderFlow,
+            playCountDao.getAllPlayCountsFlow()
+        ) { songs, sortOrder, playCounts ->
+            when (sortOrder) {
+                SortOrder.TITLE -> songs.sortedBy { it.title.lowercase() }
+                SortOrder.ARTIST -> songs.sortedBy { it.artist.lowercase() }
+                SortOrder.RECENTLY_ADDED -> songs.sortedByDescending { it.id }
+                SortOrder.MOST_PLAYED -> {
+                    val countMap = playCounts.associate { it.songId to it.playCount }
+                    songs.sortedByDescending { countMap[it.id] ?: 0 }
+                }
             }
         }
     }
@@ -246,6 +264,12 @@ class MusicRepositoryImpl @Inject constructor(
 
     override suspend fun startSync(reason: com.pralayakaveri.beatflow.domain.engine.TriggerReason) {
         indexingEngine.startSync(reason)
+    }
+
+    override fun getSortOrder(): Flow<SortOrder> = libraryPreferencesManager.sortOrderFlow
+
+    override suspend fun setSortOrder(sortOrder: SortOrder) {
+        libraryPreferencesManager.setSortOrder(sortOrder)
     }
 
     private fun LibrarySongEntity.toDomain(): Song {

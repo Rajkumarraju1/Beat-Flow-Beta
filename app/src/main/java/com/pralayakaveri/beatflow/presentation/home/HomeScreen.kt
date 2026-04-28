@@ -76,6 +76,9 @@ fun HomeScreen(
     val currentSong by mainViewModel.currentSong.collectAsState()
     val isPlaying by mainViewModel.isPlaying.collectAsState()
 
+    var showSortSheet by remember { mutableStateOf(false) }
+    val currentSortOrder by viewModel.sortOrder.collectAsState()
+
     val tabs = listOf("Songs", "Playlists", "Albums", "Artists", "Folders", "Favorites")
     val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { tabs.size })
     val selectedTabIndex = pagerState.currentPage
@@ -246,6 +249,13 @@ fun HomeScreen(
                                     false
                                 )
                             }
+                            IconButton(onClick = { showSortSheet = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.Sort,
+                                    contentDescription = "Sort Library",
+                                    tint = Color.Gray
+                                )
+                            }
                             IconButton(onClick = onGalaxyClick) {
                                 Icon(
                                     imageVector = Icons.Default.AutoGraph,
@@ -284,6 +294,47 @@ fun HomeScreen(
                             .padding(paddingValues)
                             .nestedScroll(nestedScrollConnection)
                     ) {
+
+                        if (showSortSheet) {
+                            ModalBottomSheet(
+                                onDismissRequest = { showSortSheet = false },
+                                containerColor = Color(0xFF121212),
+                                dragHandle = { BottomSheetDefaults.DragHandle(color = Color.DarkGray) }
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(bottom = 32.dp)
+                                ) {
+                                    Text(
+                                        "Sort Library By",
+                                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+                                        style = MaterialTheme.typography.titleLarge.copy(
+                                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                            color = Color.White
+                                        )
+                                    )
+                                    
+                                    val sortOptions = listOf(
+                                        "Title (A-Z)" to com.pralayakaveri.beatflow.domain.model.SortOrder.TITLE,
+                                        "Artist (A-Z)" to com.pralayakaveri.beatflow.domain.model.SortOrder.ARTIST,
+                                        "Recently Added" to com.pralayakaveri.beatflow.domain.model.SortOrder.RECENTLY_ADDED,
+                                        "Most Played" to com.pralayakaveri.beatflow.domain.model.SortOrder.MOST_PLAYED
+                                    )
+
+                                    sortOptions.forEach { (label, order) ->
+                                        SortOptionRow(
+                                            label = label,
+                                            isSelected = currentSortOrder == order,
+                                            onClick = {
+                                                viewModel.setSortOrder(order)
+                                                showSortSheet = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
 
                         androidx.compose.material3.ScrollableTabRow(
                             selectedTabIndex = selectedTabIndex,
@@ -909,6 +960,38 @@ fun QuickActionRow(
                 icon = Icons.Rounded.History,
                 text = "Recent",
                 onClick = onRecentlyPlayedClick
+            )
+        }
+    }
+}
+
+@Composable
+private fun SortOptionRow(
+    label: String,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 24.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge.copy(
+                color = if (isSelected) Color(0xFF42C6B9) else Color.White,
+                fontWeight = if (isSelected) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal
+            )
+        )
+        if (isSelected) {
+            Icon(
+                imageVector = Icons.Default.Check,
+                contentDescription = null,
+                tint = Color(0xFF42C6B9),
+                modifier = Modifier.size(20.dp)
             )
         }
     }

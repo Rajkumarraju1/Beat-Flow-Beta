@@ -40,4 +40,7 @@ interface MusicRepository {
     suspend fun removeSongFromPlaylist(playlistId: Long, songId: Long)
     fun invalidateSongCache()
     suspend fun startSync(reason: com.pralayakaveri.beatflow.domain.engine.TriggerReason)
+
+    fun getSortOrder(): Flow<com.pralayakaveri.beatflow.domain.model.SortOrder>
+    suspend fun setSortOrder(sortOrder: com.pralayakaveri.beatflow.domain.model.SortOrder)
 }

@@ -30,6 +30,15 @@ class HomeViewModel @Inject constructor(
     private val _songs = MutableStateFlow<List<Song>>(emptyList())
     val songs: StateFlow<List<Song>> = _songs.asStateFlow()
 
+    val sortOrder: StateFlow<com.pralayakaveri.beatflow.domain.model.SortOrder> = musicRepository.getSortOrder()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), com.pralayakaveri.beatflow.domain.model.SortOrder.TITLE)
+
+    fun setSortOrder(order: com.pralayakaveri.beatflow.domain.model.SortOrder) {
+        viewModelScope.launch {
+            musicRepository.setSortOrder(order)
+        }
+    }
+
     fun getFilteredSongs(searchQuery: StateFlow<String>): StateFlow<List<Song>> = 
         combine(_songs, searchQuery) { songs, query ->
             if (query.isBlank()) songs
@@ -78,6 +87,18 @@ class HomeViewModel @Inject constructor(
     init {
         loadData()
         observeFavorites()
+        observeSongs()
+    }
+
+    private fun observeSongs() {
+        viewModelScope.launch {
+            musicRepository.getAllSongs().collect { sortedSongs ->
+                _songs.value = sortedSongs
+                _folders.value = sortedSongs.groupBy { song ->
+                    song.dataPath.substringBeforeLast("/", "Unknown")
+                }
+            }
+        }
     }
 
     private fun observeFavorites() {
@@ -92,21 +113,7 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             _isLoading.value = true
             
-            // 1. Fetch songs first (fastest) - achieving "Instant UI"
-            val loadedSongs = musicRepository.getSongs()
-            _songs.value = loadedSongs
-            
-            // Group songs by folder
-            _folders.value = loadedSongs.groupBy { song ->
-                val lastSlashIndex = song.dataPath.lastIndexOf('/')
-                if (lastSlashIndex != -1) {
-                    song.dataPath.substring(0, lastSlashIndex)
-                } else {
-                    "Unknown Folder"
-                }
-            }
-            
-            // 2. Load other core data in parallel
+            // Load other core data in parallel
             supervisorScope {
                 val albumsDeferred = async { musicRepository.getAlbums() }
                 val artistsDeferred = async { musicRepository.getArtists() }

@@ -20,4 +20,7 @@ interface PlayCountDao {
 
     @Query("SELECT * FROM play_counts")
     suspend fun getAllPlayCounts(): List<PlayCountEntity>
+
+    @Query("SELECT * FROM play_counts")
+    fun getAllPlayCountsFlow(): kotlinx.coroutines.flow.Flow<List<PlayCountEntity>>
 }
