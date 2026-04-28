@@ -5,8 +5,7 @@ import com.pralayakaveri.beatflow.presentation.galaxy.NodeType
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.rememberTransformableState
-import androidx.compose.foundation.gestures.transformable
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -60,10 +59,7 @@ fun GalaxyScreen(
         zoom = animZoom.value
     }
 
-    val state = rememberTransformableState { zoomChange, offsetChange, _ ->
-        zoom = (zoom * zoomChange).coerceIn(0.5f, 5f)
-        offset += offsetChange
-    }
+    // Transform state is now handled natively via detectTransformGestures for focal point tracking
 
     val textMeasurer = rememberTextMeasurer()
     val scope = rememberCoroutineScope()
@@ -208,7 +204,14 @@ fun GalaxyScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .transformable(state = state)
+                        .pointerInput(Unit) {
+                            detectTransformGestures { centroid, pan, gestureZoom, _ ->
+                                val oldZoom = zoom
+                                zoom = (zoom * gestureZoom).coerceIn(0.5f, 5f)
+                                val effectiveZoomChange = zoom / oldZoom
+                                offset = offset * effectiveZoomChange + centroid * (1 - effectiveZoomChange) + pan
+                            }
+                        }
                         .pointerInput(Unit) {
                             detectTapGestures { tapOffset ->
                                 val canvasTap = (tapOffset - offset) / zoom

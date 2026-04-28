@@ -13,14 +13,17 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 
 class MusicController @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val musicRepository: com.pralayakaveri.beatflow.domain.repository.MusicRepository
+    private val musicRepository: com.pralayakaveri.beatflow.domain.repository.MusicRepository,
+    private val sessionManager: com.pralayakaveri.beatflow.domain.util.PlaybackSessionManager
 ) {
+    private val controllerScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main + kotlinx.coroutines.SupervisorJob())
     private var browserFuture: ListenableFuture<MediaBrowser>? = null
     private var mediaBrowser: MediaBrowser? = null
 
@@ -86,8 +89,55 @@ class MusicController @Inject constructor(
             mediaBrowser?.let {
                 _shuffleModeEnabled.value = it.shuffleModeEnabled
                 _repeatMode.value = it.repeatMode
+                
+                // Attempt to restore session
+                restoreLastSession()
             }
         }, ContextCompat.getMainExecutor(context))
+    }
+
+    private fun restoreLastSession() {
+        controllerScope.launch {
+            val session: com.pralayakaveri.beatflow.domain.util.PlaybackSession = sessionManager.sessionFlow.first()
+            val lastId: Long? = session.lastSongId
+            if (lastId != null && session.lastQueueIds.isNotEmpty()) {
+                val allSongs: List<com.pralayakaveri.beatflow.domain.model.Song> = musicRepository.getSongs()
+                val songMap: Map<Long, com.pralayakaveri.beatflow.domain.model.Song> = allSongs.associateBy { it.id }
+                val restoredQueue: List<com.pralayakaveri.beatflow.domain.model.Song> = session.lastQueueIds.mapNotNull { qId -> songMap[qId] }
+                
+                if (restoredQueue.isNotEmpty()) {
+                    currentPlaylist = restoredQueue
+                    mediaBrowser?.let { browser ->
+                        val mediaItems = restoredQueue.map { s ->
+                            MediaItem.Builder()
+                                .setUri(s.uri)
+                                .setMediaId(s.id.toString())
+                                .build()
+                        }
+                        browser.setMediaItems(mediaItems)
+                        
+                        var restoreIndex = 0
+                        if (session.lastQueueIndex in restoredQueue.indices) {
+                            restoreIndex = session.lastQueueIndex
+                        } else {
+                            for (i in restoredQueue.indices) {
+                                val songInQueue = restoredQueue[i]
+                                if (songInQueue.id == lastId) {
+                                    restoreIndex = i
+                                    break
+                                }
+                            }
+                        }
+                        
+                        browser.seekTo(restoreIndex, session.lastPosition)
+                        browser.prepare()
+                        
+                        _currentSongIndex.value = restoreIndex
+                        _currentSong.value = restoredQueue[restoreIndex]
+                    }
+                }
+            }
+        }
     }
 
     fun toggleShuffle() {

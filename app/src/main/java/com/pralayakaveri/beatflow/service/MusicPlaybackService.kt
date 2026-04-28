@@ -6,14 +6,18 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.*
 
 @AndroidEntryPoint
 class MusicPlaybackService : MediaLibraryService() {
 
+    @javax.inject.Inject
+    lateinit var sessionManager: com.pralayakaveri.beatflow.domain.util.PlaybackSessionManager
+
     private lateinit var exoPlayer: ExoPlayer
     private lateinit var mediaLibrarySession: MediaLibrarySession
 
-
+    private val serviceScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO + kotlinx.coroutines.SupervisorJob())
 
     override fun onCreate() {
         super.onCreate()
@@ -36,7 +40,24 @@ class MusicPlaybackService : MediaLibraryService() {
                 mediaLibrarySession.setSessionExtras(extras)
             }
             
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                if (!playWhenReady) {
+                    saveCurrentSession()
+                }
+            }
+
+            override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
+                saveCurrentSession()
+            }
+
+            override fun onPositionDiscontinuity(
+                oldPosition: androidx.media3.common.Player.PositionInfo,
+                newPosition: androidx.media3.common.Player.PositionInfo,
+                reason: Int
+            ) {
+                if (reason == androidx.media3.common.Player.DISCONTINUITY_REASON_SEEK) {
+                    saveCurrentSession()
+                }
             }
         })
             
@@ -46,11 +67,34 @@ class MusicPlaybackService : MediaLibraryService() {
             .build()
     }
 
+    private fun saveCurrentSession() {
+        val currentItem = exoPlayer.currentMediaItem ?: return
+        val songId = currentItem.mediaId.toLongOrNull() ?: return
+        val position = exoPlayer.currentPosition
+        val index = exoPlayer.currentMediaItemIndex
+        
+        val queueIds = mutableListOf<Long>()
+        for (i in 0 until exoPlayer.mediaItemCount) {
+            exoPlayer.getMediaItemAt(i).mediaId.toLongOrNull()?.let { queueIds.add(it) }
+        }
+
+        serviceScope.launch {
+            sessionManager.saveSession(
+                songId = songId,
+                position = position,
+                queueIds = queueIds,
+                queueIndex = index
+            )
+        }
+    }
+
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? {
         return mediaLibrarySession
     }
 
     override fun onDestroy() {
+        saveCurrentSession()
+        serviceScope.cancel()
         mediaLibrarySession.run {
             exoPlayer.release()
             release()
