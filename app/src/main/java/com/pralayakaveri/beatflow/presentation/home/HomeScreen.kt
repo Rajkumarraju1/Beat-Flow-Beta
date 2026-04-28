@@ -53,7 +53,8 @@ fun HomeScreen(
     onSongClick: (List<Song>, Int) -> Unit,
     onCollectionClick: (String, List<Song>, String) -> Unit,
     onGalaxyClick: () -> Unit,
-    onInsightsClick: () -> Unit
+    onInsightsClick: () -> Unit,
+    onSettingsClick: () -> Unit
 ) {
     val searchQuery by mainViewModel.searchQuery.collectAsState()
     val songs by viewModel.getFilteredSongs(mainViewModel.searchQuery).collectAsState()
@@ -256,6 +257,13 @@ fun HomeScreen(
                                 Icon(
                                     imageVector = Icons.Default.BarChart,
                                     contentDescription = "Music Insights",
+                                    tint = Color.Gray
+                                )
+                            }
+                            IconButton(onClick = onSettingsClick) {
+                                Icon(
+                                    imageVector = Icons.Default.Settings,
+                                    contentDescription = "Settings",
                                     tint = Color.Gray
                                 )
                             }

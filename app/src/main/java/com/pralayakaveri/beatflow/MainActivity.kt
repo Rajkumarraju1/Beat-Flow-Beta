@@ -92,7 +92,13 @@ class MainActivity : ComponentActivity() {
                                             mainViewModel.selectCollection(title, songs, type)
                                         },
                                         onGalaxyClick = { navController.navigate("galaxy") },
-                                        onInsightsClick = { navController.navigate("insights") }
+                                        onInsightsClick = { navController.navigate("insights") },
+                                        onSettingsClick = { navController.navigate("settings") }
+                                    )
+                                }
+                                composable("settings") {
+                                    com.pralayakaveri.beatflow.presentation.settings.SettingsScreen(
+                                        onNavigateBack = { navController.popBackStack() }
                                     )
                                 }
                                 composable("galaxy") {
