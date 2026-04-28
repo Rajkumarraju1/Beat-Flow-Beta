@@ -11,10 +11,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 
 class MediaStoreProvider @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val filterPreferencesManager: com.pralayakaveri.beatflow.domain.util.FilterPreferencesManager
 ) {
 
     data class MediaStoreHeadless(
@@ -26,6 +28,8 @@ class MediaStoreProvider @Inject constructor(
 
     suspend fun getHeadlessSongs(): List<MediaStoreHeadless> = withContext(Dispatchers.IO) {
         val result = mutableListOf<MediaStoreHeadless>()
+        val filters = filterPreferencesManager.filterFlow.first()
+        
         val collection = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
             MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
         } else {
@@ -36,7 +40,8 @@ class MediaStoreProvider @Inject constructor(
             MediaStore.Audio.Media._ID,
             MediaStore.Audio.Media.DATA,
             MediaStore.Audio.Media.SIZE,
-            MediaStore.Audio.Media.DATE_MODIFIED
+            MediaStore.Audio.Media.DATE_MODIFIED,
+            MediaStore.Audio.Media.DURATION
         )
 
         val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
@@ -52,13 +57,20 @@ class MediaStoreProvider @Inject constructor(
             val dataCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)
             val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.SIZE)
             val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_MODIFIED)
+            val durationCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
 
             while (cursor.moveToNext()) {
+                val size = cursor.getLong(sizeCol)
+                val duration = cursor.getLong(durationCol)
+                
+                if (filters.minSizeEnabled && size < filters.minSizeBytes) continue
+                if (filters.minDurationEnabled && duration < filters.minDurationMs) continue
+
                 result.add(
                     MediaStoreHeadless(
                         id = cursor.getLong(idCol),
                         path = cursor.getString(dataCol) ?: "",
-                        size = cursor.getLong(sizeCol),
+                        size = size,
                         dateModified = cursor.getLong(dateCol)
                     )
                 )
@@ -69,6 +81,7 @@ class MediaStoreProvider @Inject constructor(
 
     suspend fun getAllSongs(): List<Song> = withContext(Dispatchers.IO) {
         val songs = mutableListOf<Song>()
+        val filters = filterPreferencesManager.filterFlow.first()
         
         val collection = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
             MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
@@ -85,7 +98,8 @@ class MediaStoreProvider @Inject constructor(
             MediaStore.Audio.Media.ALBUM_ID,
             MediaStore.Audio.Media.DURATION,
             MediaStore.Audio.Media.DATA,
-            MediaStore.Audio.Media.TRACK
+            MediaStore.Audio.Media.TRACK,
+            MediaStore.Audio.Media.SIZE
         )
 
         val sortOrder = "${MediaStore.Audio.Media.TITLE} ASC"
@@ -107,15 +121,21 @@ class MediaStoreProvider @Inject constructor(
             val durationColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
             val dataColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)
             val trackColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TRACK)
+            val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.SIZE)
 
             while (cursor.moveToNext()) {
+                val size = cursor.getLong(sizeColumn)
+                val duration = cursor.getLong(durationColumn)
+                
+                if (filters.minSizeEnabled && size < filters.minSizeBytes) continue
+                if (filters.minDurationEnabled && duration < filters.minDurationMs) continue
+
                 val id = cursor.getLong(idColumn)
                 val title = cursor.getString(titleColumn) ?: "Cosmic Signal"
                 val artist = cursor.getString(artistColumn) ?: "Stellar Resonance"
                 val artistId = cursor.getLong(artistIdColumn)
                 val album = cursor.getString(albumColumn) ?: "The Singularity"
                 val albumId = cursor.getLong(albumIdColumn)
-                val duration = cursor.getLong(durationColumn)
                 val dataPath = cursor.getString(dataColumn) ?: ""
                 val trackNumber = cursor.getInt(trackColumn)
 
@@ -135,7 +155,7 @@ class MediaStoreProvider @Inject constructor(
                         duration = duration,
                         dataPath = dataPath,
                         trackNumber = trackNumber,
-                        genre = null, // MediaStore genre extraction is complex, defaulting to null for now
+                        genre = null,
                         uri = contentUri,
                         albumArtUri = albumArtUri
                     )

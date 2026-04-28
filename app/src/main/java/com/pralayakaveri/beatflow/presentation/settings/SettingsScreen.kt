@@ -22,9 +22,11 @@ import com.pralayakaveri.beatflow.presentation.components.AppBackground
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    viewModel: SettingsViewModel = androidx.hilt.navigation.compose.hiltViewModel()
 ) {
     val uriHandler = LocalUriHandler.current
+    val filterPrefs by viewModel.filterPreferences.collectAsState()
 
     Scaffold(
         topBar = {
@@ -59,16 +61,35 @@ fun SettingsScreen(
                         subtitle = "Themes, accent colors, and galaxy mode",
                         onClick = { /* Future expansion */ }
                     )
+                }
+
+                item {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    SettingsHeader("Library & Scanning")
+                    SettingSwitchItem(
+                        icon = Icons.Default.Timer,
+                        title = "Filter Short Tracks",
+                        subtitle = "Hide audio clips shorter than 30 seconds",
+                        checked = filterPrefs?.minDurationEnabled ?: true,
+                        onCheckedChange = { viewModel.updateMinDurationEnabled(it) }
+                    )
+                    SettingSwitchItem(
+                        icon = Icons.Default.SdCard,
+                        title = "Filter Tiny Files",
+                        subtitle = "Hide audio files smaller than 100 KB",
+                        checked = filterPrefs?.minSizeEnabled ?: true,
+                        onCheckedChange = { viewModel.updateMinSizeEnabled(it) }
+                    )
                     SettingsItem(
-                        icon = Icons.Default.SurroundSound,
-                        title = "Audio Engine",
-                        subtitle = "Normalization, crossfade, and equalizer",
-                        onClick = { /* Future expansion */ }
+                        icon = Icons.Default.Refresh,
+                        title = "Force Library Rescan",
+                        subtitle = "Re-index all music files from scratch",
+                        onClick = { viewModel.forceRescan() }
                     )
                 }
 
                 item {
-                    Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
                     SettingsHeader("Legal & Privacy")
                     SettingsItem(
                         icon = Icons.Default.VerifiedUser,
@@ -81,7 +102,7 @@ fun SettingsScreen(
                     SettingsItem(
                         icon = Icons.Default.Info,
                         title = "About BeatFlow",
-                        subtitle = "Version 1.0-beta01 (RC1)",
+                        subtitle = "Version 1.0-beta04 (RC2)",
                         onClick = { /* Show credits/version info */ }
                     )
                 }
@@ -101,6 +122,66 @@ fun SettingsScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+fun SettingSwitchItem(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onCheckedChange(!checked) }
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Surface(
+            modifier = Modifier.size(48.dp),
+            shape = MaterialTheme.shapes.medium,
+            color = Color.White.copy(alpha = 0.05f)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        }
+        
+        Spacer(modifier = Modifier.width(16.dp))
+        
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.White,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.Gray,
+                lineHeight = 16.sp
+            )
+        }
+        
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color(0xFF42C6B9),
+                checkedTrackColor = Color(0xFF42C6B9).copy(alpha = 0.5f),
+                uncheckedThumbColor = Color.Gray,
+                uncheckedTrackColor = Color.Gray.copy(alpha = 0.2f)
+            )
+        )
     }
 }
 

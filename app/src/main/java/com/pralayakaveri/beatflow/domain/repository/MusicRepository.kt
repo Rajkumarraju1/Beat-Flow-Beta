@@ -43,4 +43,9 @@ interface MusicRepository {
 
     fun getSortOrder(): Flow<com.pralayakaveri.beatflow.domain.model.SortOrder>
     suspend fun setSortOrder(sortOrder: com.pralayakaveri.beatflow.domain.model.SortOrder)
+
+    fun getFilterPreferences(): Flow<com.pralayakaveri.beatflow.domain.util.FilterPreferences>
+    suspend fun updateMinDurationEnabled(enabled: Boolean)
+    suspend fun updateMinSizeEnabled(enabled: Boolean)
+    suspend fun forceRescan()
 }

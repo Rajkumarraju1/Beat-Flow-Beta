@@ -29,7 +29,8 @@ class MusicRepositoryImpl @Inject constructor(
     private val artistImageDao: ArtistImageDao,
     private val librarySongDao: LibrarySongDao,
     private val indexingEngine: LibraryIndexingEngine,
-    private val libraryPreferencesManager: LibraryPreferencesManager
+    private val libraryPreferencesManager: LibraryPreferencesManager,
+    private val filterPreferencesManager: com.pralayakaveri.beatflow.domain.util.FilterPreferencesManager
 ) : MusicRepository {
 
     private var cachedSongs: List<Song> = emptyList()
@@ -270,6 +271,23 @@ class MusicRepositoryImpl @Inject constructor(
 
     override suspend fun setSortOrder(sortOrder: SortOrder) {
         libraryPreferencesManager.setSortOrder(sortOrder)
+    }
+
+    override fun getFilterPreferences(): Flow<com.pralayakaveri.beatflow.domain.util.FilterPreferences> = 
+        filterPreferencesManager.filterFlow
+
+    override suspend fun updateMinDurationEnabled(enabled: Boolean) {
+        filterPreferencesManager.updateMinDurationEnabled(enabled)
+    }
+
+    override suspend fun updateMinSizeEnabled(enabled: Boolean) {
+        filterPreferencesManager.updateMinSizeEnabled(enabled)
+    }
+
+    override suspend fun forceRescan() {
+        invalidateSongCache()
+        librarySongDao.deleteAll()
+        startSync(com.pralayakaveri.beatflow.domain.engine.TriggerReason.MANUAL_TRIGGER)
     }
 
     private fun LibrarySongEntity.toDomain(): Song {
