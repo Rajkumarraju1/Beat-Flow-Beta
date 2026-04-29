@@ -12,6 +12,9 @@ interface FavoritesDao {
     @Query("SELECT * FROM favorites ORDER BY dateAdded DESC")
     fun getAllFavorites(): Flow<List<FavoriteSongEntity>>
 
+    @Query("SELECT id FROM favorites")
+    fun getAllFavoriteIds(): Flow<List<Long>>
+
     @Query("SELECT * FROM favorites")
     suspend fun getAllFavoritesSingle(): List<FavoriteSongEntity>
 

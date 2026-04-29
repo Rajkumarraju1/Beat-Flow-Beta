@@ -13,5 +13,6 @@ data class SongMetadataEntity(
     val genre: String?,
     val bpm: Int?,
     val mood: String?,
+    val lyrics: String? = null,
     val lastScanned: Long
 )

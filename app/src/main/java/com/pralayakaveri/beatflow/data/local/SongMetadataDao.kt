@@ -18,4 +18,7 @@ interface SongMetadataDao {
 
     @Query("DELETE FROM song_metadata WHERE songId = :songId")
     suspend fun deleteMetadata(songId: Long)
+
+    @Query("UPDATE song_metadata SET lyrics = :lyrics WHERE songId = :songId")
+    suspend fun updateLyrics(songId: Long, lyrics: String?)
 }

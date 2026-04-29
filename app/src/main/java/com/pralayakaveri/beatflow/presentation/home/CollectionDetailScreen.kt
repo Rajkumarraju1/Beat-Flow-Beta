@@ -24,6 +24,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.filled.Edit
 import coil.compose.AsyncImage
+import com.pralayakaveri.beatflow.presentation.components.SongItem
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,8 +37,11 @@ fun CollectionDetailScreen(
     val title by mainViewModel.selectedCollectionTitle.collectAsState()
     val songs by mainViewModel.selectedCollectionSongs.collectAsState()
     val type by mainViewModel.selectedCollectionType.collectAsState()
-    val currentSong by mainViewModel.currentSong.collectAsState()
+    val currentSongState = mainViewModel.currentSong.collectAsState()
+    val isPlayingState = mainViewModel.isPlaying.collectAsState()
     val artistImages by mainViewModel.artistImages.collectAsState()
+    val favoriteIds by mainViewModel.favoriteIds.collectAsState()
+    val customArtworks by mainViewModel.customArtworks.collectAsState()
 
     val currentArtistImage = remember(title, artistImages) { artistImages[title] }
 
@@ -154,9 +158,12 @@ fun CollectionDetailScreen(
                 itemsIndexed(songs, key = { _, song -> song.id }) { index, song ->
                     SongItem(
                         song = song,
-                        isCurrent = song.id == currentSong?.id,
-                        mainViewModel = mainViewModel,
+                        isFavorite = favoriteIds.contains(song.id),
+                        displayUri = customArtworks[song.id] ?: song.albumArtUri,
+                        isCurrent = { song.id == currentSongState.value?.id },
+                        isPlaying = { isPlayingState.value },
                         onClick = { onSongClick(songs, index) },
+                        onFavoriteClick = { mainViewModel.toggleFavorite(targetSongId = song.id) },
                         onOptionsClick = onOptionsClick
                     )
                 }

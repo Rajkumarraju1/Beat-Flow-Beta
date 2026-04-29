@@ -11,6 +11,7 @@ interface MusicRepository {
     suspend fun getArtists(): List<Artist>
     
     fun getFavoriteSongs(): Flow<List<Song>>
+    fun getFavoriteIds(): Flow<Set<Long>>
     suspend fun toggleFavorite(songId: Long)
     fun isFavorite(songId: Long): Flow<Boolean>
 
@@ -48,4 +49,10 @@ interface MusicRepository {
     suspend fun updateMinDurationEnabled(enabled: Boolean)
     suspend fun updateMinSizeEnabled(enabled: Boolean)
     suspend fun forceRescan()
+    
+    suspend fun saveLyrics(songId: Long, lyrics: String)
+    suspend fun deleteLyrics(songId: Long)
+
+    fun getUseReducedMotion(): Flow<Boolean>
+    suspend fun setUseReducedMotion(enabled: Boolean)
 }

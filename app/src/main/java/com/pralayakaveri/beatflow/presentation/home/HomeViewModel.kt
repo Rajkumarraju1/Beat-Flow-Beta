@@ -9,7 +9,12 @@ import com.pralayakaveri.beatflow.domain.model.Song
 import com.pralayakaveri.beatflow.domain.repository.MusicRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OneTimeWorkRequest
 import androidx.work.WorkManager
+import androidx.work.Constraints
+import androidx.work.NetworkType
+import androidx.work.BackoffPolicy
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.async
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,6 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
 
@@ -27,8 +33,8 @@ class HomeViewModel @Inject constructor(
     private val workManager: WorkManager
 ) : ViewModel() {
 
-    private val _songs = MutableStateFlow<List<Song>>(emptyList())
-    val songs: StateFlow<List<Song>> = _songs.asStateFlow()
+    val songs: StateFlow<List<Song>> = musicRepository.getAllSongs()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val sortOrder: StateFlow<com.pralayakaveri.beatflow.domain.model.SortOrder> = musicRepository.getSortOrder()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), com.pralayakaveri.beatflow.domain.model.SortOrder.TITLE)
@@ -40,7 +46,7 @@ class HomeViewModel @Inject constructor(
     }
 
     fun getFilteredSongs(searchQuery: StateFlow<String>): StateFlow<List<Song>> = 
-        combine(_songs, searchQuery) { songs, query ->
+        combine(songs, searchQuery) { songs, query ->
             if (query.isBlank()) songs
             else songs.filter { 
                 it.title.contains(query, ignoreCase = true) || 
@@ -48,17 +54,26 @@ class HomeViewModel @Inject constructor(
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val folders: StateFlow<Map<String, List<Song>>> = songs
+        .map { list -> list.groupBy { it.dataPath.substringBeforeLast("/", "Unknown") } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    val albumSongsMap: StateFlow<Map<Long, List<Song>>> = songs
+        .map { list -> list.groupBy { it.albumId } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    val artistSongsMap: StateFlow<Map<String, List<Song>>> = songs
+        .map { list -> list.groupBy { it.artist } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    val favorites: StateFlow<List<Song>> = musicRepository.getFavoriteSongs()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     private val _albums = MutableStateFlow<List<Album>>(emptyList())
     val albums: StateFlow<List<Album>> = _albums.asStateFlow()
 
     private val _artists = MutableStateFlow<List<Artist>>(emptyList())
     val artists: StateFlow<List<Artist>> = _artists.asStateFlow()
-
-    private val _folders = MutableStateFlow<Map<String, List<Song>>>(emptyMap())
-    val folders: StateFlow<Map<String, List<Song>>> = _folders.asStateFlow()
-
-    private val _favorites = MutableStateFlow<List<Song>>(emptyList())
-    val favorites: StateFlow<List<Song>> = _favorites.asStateFlow()
 
     private val _recentlyAdded = MutableStateFlow<List<Song>>(emptyList())
     val recentlyAdded: StateFlow<List<Song>> = _recentlyAdded.asStateFlow()
@@ -86,27 +101,6 @@ class HomeViewModel @Inject constructor(
 
     init {
         loadData()
-        observeFavorites()
-        observeSongs()
-    }
-
-    private fun observeSongs() {
-        viewModelScope.launch {
-            musicRepository.getAllSongs().collect { sortedSongs ->
-                _songs.value = sortedSongs
-                _folders.value = sortedSongs.groupBy { song ->
-                    song.dataPath.substringBeforeLast("/", "Unknown")
-                }
-            }
-        }
-    }
-
-    private fun observeFavorites() {
-        viewModelScope.launch {
-            musicRepository.getFavoriteSongs().collect { favs ->
-                _favorites.value = favs
-            }
-        }
     }
 
     fun loadData() {
@@ -148,8 +142,23 @@ class HomeViewModel @Inject constructor(
     }
 
     private fun enqueueMetadataWork() {
-        val workRequest = OneTimeWorkRequestBuilder<com.pralayakaveri.beatflow.data.worker.MetadataWorker>()
+        val constraints = Constraints.Builder()
+            .setRequiresBatteryNotLow(true)
             .build()
-        workManager.enqueue(workRequest)
+
+        val workRequest = OneTimeWorkRequestBuilder<com.pralayakaveri.beatflow.data.worker.MetadataWorker>()
+            .setConstraints(constraints)
+            .setBackoffCriteria(
+                BackoffPolicy.EXPONENTIAL,
+                androidx.work.WorkRequest.MIN_BACKOFF_MILLIS,
+                TimeUnit.MILLISECONDS
+            )
+            .build()
+
+        workManager.enqueueUniqueWork(
+            "metadata_sync",
+            androidx.work.ExistingWorkPolicy.KEEP,
+            workRequest
+        )
     }
 }

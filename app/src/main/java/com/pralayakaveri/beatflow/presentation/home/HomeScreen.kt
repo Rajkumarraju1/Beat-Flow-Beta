@@ -44,6 +44,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import com.pralayakaveri.beatflow.presentation.components.SkeletonSongItem
 import com.pralayakaveri.beatflow.presentation.components.MusicVisualizerIcon
+import com.pralayakaveri.beatflow.presentation.components.SongItem
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -73,8 +74,15 @@ fun HomeScreen(
     val focusPlaylist by viewModel.focusPlaylist.collectAsState()
     val drivingPlaylist by viewModel.drivingPlaylist.collectAsState()
 
-    val currentSong by mainViewModel.currentSong.collectAsState()
-    val isPlaying by mainViewModel.isPlaying.collectAsState()
+    val currentSongState = mainViewModel.currentSong.collectAsState()
+    val isPlayingState = mainViewModel.isPlaying.collectAsState()
+    val favoriteIds by mainViewModel.favoriteIds.collectAsState()
+    val customArtworks by mainViewModel.customArtworks.collectAsState()
+    val albumSongsMap by viewModel.albumSongsMap.collectAsState()
+    val artistSongsMap by viewModel.artistSongsMap.collectAsState()
+    
+    var selectedSongForOptions by remember { mutableStateOf<Song?>(null) }
+    val isFavorite = selectedSongForOptions?.let { favoriteIds.contains(it.id) } ?: false
 
     var showSortSheet by remember { mutableStateOf(false) }
     val currentSortOrder by viewModel.sortOrder.collectAsState()
@@ -103,10 +111,6 @@ fun HomeScreen(
             }
         }
     }
-
-    var selectedSongForOptions by remember { mutableStateOf<Song?>(null) }
-    val isFavorite by (selectedSongForOptions?.let { mainViewModel.isFavorite(it.id) }
-        ?: MutableStateFlow(false)).collectAsState()
 
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
@@ -164,7 +168,7 @@ fun HomeScreen(
             song = selectedSongForOptions!!,
             customArtworkUri = customArtworks[selectedSongForOptions!!.id],
             isFavorite = isFavorite,
-            onFavoriteClick = { mainViewModel.toggleFavorite(selectedSongForOptions!!) },
+            onFavoriteClick = { mainViewModel.toggleFavorite(targetSongId = selectedSongForOptions!!.id) },
             onPlaylistClick = { showPlaylistSheet = true },
             onShareClick = {
                 val shareIntent = android.content.Intent().apply {
@@ -427,10 +431,12 @@ fun HomeScreen(
                                                     key = { _, song -> song.id }) { index, song ->
                                                     SongItem(
                                                         song = song,
-                                                        isCurrent = song.id == currentSong?.id,
-                                                        isPlaying = isPlaying,
-                                                        mainViewModel = mainViewModel,
+                                                        isFavorite = favoriteIds.contains(song.id),
+                                                        displayUri = customArtworks[song.id] ?: song.albumArtUri,
+                                                        isCurrent = { song.id == currentSongState.value?.id },
+                                                        isPlaying = { isPlayingState.value },
                                                         onClick = { onSongClick(songs, index) },
+                                                        onFavoriteClick = { mainViewModel.toggleFavorite(targetSongId = song.id) },
                                                         onOptionsClick = { selectedSongForOptions = it }
                                                     )
                                                 }
@@ -501,8 +507,7 @@ fun HomeScreen(
                                                 items = albums,
                                                 key = { album -> album.id }
                                             ) { album ->
-                                                val albumSongs =
-                                                    songs.filter { it.albumId == album.id }
+                                                val albumSongs = albumSongsMap[album.id] ?: emptyList()
                                                 AlbumItem(
                                                     album = album,
                                                     onClick = {
@@ -529,8 +534,7 @@ fun HomeScreen(
                                                 items = artists,
                                                 key = { artist -> artist.id.toString() + artist.name }
                                             ) { artist ->
-                                                val artistSongs =
-                                                    songs.filter { it.artist == artist.name }
+                                                val artistSongs = artistSongsMap[artist.name] ?: emptyList()
                                                 ArtistItem(
                                                     artist = artist,
                                                     customImageUri = artistImages[artist.name],
@@ -587,10 +591,12 @@ fun HomeScreen(
                                                     key = { _, song -> song.id }) { index, song ->
                                                     SongItem(
                                                         song = song,
-                                                        isCurrent = song.id == currentSong?.id,
-                                                        isPlaying = isPlaying,
-                                                        mainViewModel = mainViewModel,
+                                                        isFavorite = favoriteIds.contains(song.id),
+                                                        displayUri = customArtworks[song.id] ?: song.albumArtUri,
+                                                        isCurrent = { song.id == currentSongState.value?.id },
+                                                        isPlaying = { isPlayingState.value },
                                                         onClick = { onSongClick(favorites, index) },
+                                                        onFavoriteClick = { mainViewModel.toggleFavorite(song.id) },
                                                         onOptionsClick = {
                                                             selectedSongForOptions = it
                                                         }
@@ -770,124 +776,7 @@ fun ArtistItem(
         )
     }
 }
-
-@Composable
-fun SongItem(
-    song: Song,
-    isCurrent: Boolean = false,
-    isPlaying: Boolean = false,
-    mainViewModel: com.pralayakaveri.beatflow.presentation.main.MainViewModel,
-    onClick: () -> Unit,
-    onOptionsClick: (Song) -> Unit
-) {
-    val borderColor = if (isCurrent) Color(0xFF42C6B9) else Color.Transparent
-    val isFavorite by mainViewModel.isFavorite(song.id).collectAsState(initial = false)
-    var isAnimating by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(
-        targetValue = if (isAnimating) 1.3f else 1f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
-        ),
-        finishedListener = { isAnimating = false }
-    )
-    val context = LocalContext.current
-    val customArtworks by mainViewModel.customArtworks.collectAsState()
-    val displayUri = customArtworks[song.id] ?: song.albumArtUri
-
-    val imageRequest = remember(displayUri) {
-        ImageRequest.Builder(context)
-            .data(displayUri)
-            .size(150)
-            .crossfade(true)
-            .build()
-    }
-    val cleanTitle = remember(song.title) { song.title.cleanSongTitle() }
-    val timeDuration = remember(song.duration) { formatTime(song.duration) }
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
-            .shadow(
-                elevation = if (isCurrent) 8.dp else 2.dp,
-                shape = RoundedCornerShape(20.dp),
-                spotColor = if (isCurrent) Color(0xFF42C6B9) else Color.Black
-            )
-            .border(if (isCurrent) 1.5.dp else 0.dp, borderColor, RoundedCornerShape(20.dp))
-            .clickable { onClick() },
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isCurrent) Color(0xFF252530) else Color(0xFF1E1E24)
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box {
-                coil.compose.AsyncImage(
-                    model = imageRequest,
-                    contentDescription = "Album Art",
-                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                    modifier = Modifier
-                        .size(56.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color.DarkGray)
-                )
-                if (isCurrent && isPlaying) {
-                    MusicVisualizerIcon(
-                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp)
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = cleanTitle,
-                    style = MaterialTheme.typography.bodyLarge.copy(
-                        fontWeight = if (isCurrent) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Medium
-                    ),
-                    color = if (isCurrent) Color(0xFF42C6B9) else Color.White.copy(alpha = 0.9f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "${song.artist} • $timeDuration",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.Gray.copy(alpha = 0.8f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            Row {
-                IconButton(onClick = {
-                    isAnimating = true
-                    mainViewModel.toggleFavorite(song)
-                }) {
-                    Icon(
-                        imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                        contentDescription = "Favorite",
-                        tint = if (isFavorite) Color(0xFF42C6B9) else Color.Gray.copy(alpha = 0.7f),
-                        modifier = Modifier.scale(scale)
-                    )
-                }
-
-                IconButton(onClick = { onOptionsClick(song) }) {
-                    Icon(
-                        imageVector = androidx.compose.material.icons.Icons.Default.MoreVert,
-                        contentDescription = "Options",
-                        tint = Color.Gray.copy(alpha = 0.7f)
-                    )
-                }
-            }
-        }
-    }
-}
+// SongItem moved to components/SongItem.kt
 
 
 @Composable

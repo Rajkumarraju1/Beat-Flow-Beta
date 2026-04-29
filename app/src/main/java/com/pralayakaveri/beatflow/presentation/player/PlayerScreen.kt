@@ -957,8 +957,9 @@ fun PlayerScreen(
                                 tint = if (repeatMode != androidx.media3.common.Player.REPEAT_MODE_OFF) vibrantColor else Color.White.copy(alpha = 0.6f), modifier = Modifier.size(22.dp))
                         }
                         
-                        val isFavorite by mainViewModel.isFavorite(song.id).collectAsState(initial = false)
-                        IconButton(onClick = { mainViewModel.toggleFavorite(song) }) {
+                        val favoriteIds by mainViewModel.favoriteIds.collectAsState()
+                        val isFavorite = favoriteIds.contains(song.id)
+                        IconButton(onClick = { mainViewModel.toggleFavorite(song.id) }) {
                             Icon(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, contentDescription = "Favorite", tint = if (isFavorite) vibrantColor else Color.White.copy(alpha = 0.6f), modifier = Modifier.size(22.dp))
                         }
                         

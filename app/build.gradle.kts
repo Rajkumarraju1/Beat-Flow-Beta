@@ -14,8 +14,8 @@ android {
         applicationId = "com.pralayakaveri.orbitmusic"
         minSdk = 24
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.0-beta04"
+        versionCode = 8
+        versionName = "1.0.0-rc1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

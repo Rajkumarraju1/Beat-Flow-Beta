@@ -1,7 +1,9 @@
 package com.pralayakaveri.beatflow.domain.model
 
 import android.net.Uri
+import androidx.compose.runtime.Immutable
 
+@Immutable
 data class Song(
     val id: Long,
     val title: String,

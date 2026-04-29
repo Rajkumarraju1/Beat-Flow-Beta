@@ -27,6 +27,35 @@ fun SettingsScreen(
 ) {
     val uriHandler = LocalUriHandler.current
     val filterPrefs by viewModel.filterPreferences.collectAsState()
+    val useReducedMotion by viewModel.useReducedMotion.collectAsState()
+    var showRescanDialog by remember { mutableStateOf(false) }
+
+    if (showRescanDialog) {
+        AlertDialog(
+            onDismissRequest = { showRescanDialog = false },
+            title = { Text("Force Library Rescan?") },
+            text = { Text("This will clear the existing library index and re-scan all folders. This may take a few minutes and will consume battery.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.forceRescan()
+                        showRescanDialog = false
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFF42C6B9))
+                ) {
+                    Text("Rescan Now")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRescanDialog = false }) {
+                    Text("Cancel", color = Color.Gray)
+                }
+            },
+            containerColor = Color(0xFF1E1E24),
+            titleContentColor = Color.White,
+            textContentColor = Color.Gray
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -51,20 +80,22 @@ fun SettingsScreen(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding)
+                    .padding(padding),
+                contentPadding = PaddingValues(bottom = 32.dp)
             ) {
+                // Top Level: Accessibility & Motion
                 item {
-                    SettingsHeader("Preferences")
-                    SettingsItem(
-                        icon = Icons.Default.Palette,
-                        title = "Appearance",
-                        subtitle = "Themes, accent colors, and galaxy mode",
-                        onClick = { /* Future expansion */ }
+                    SettingSwitchItem(
+                        icon = Icons.Default.MotionPhotosAuto,
+                        title = "Reduced Motion",
+                        subtitle = "Simplify animations and disable nebula warps",
+                        checked = useReducedMotion,
+                        onCheckedChange = { viewModel.updateReducedMotion(it) }
                     )
                 }
 
                 item {
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(24.dp))
                     SettingsHeader("Library & Scanning")
                     SettingSwitchItem(
                         icon = Icons.Default.Timer,
@@ -84,40 +115,61 @@ fun SettingsScreen(
                         icon = Icons.Default.Refresh,
                         title = "Force Library Rescan",
                         subtitle = "Re-index all music files from scratch",
-                        onClick = { viewModel.forceRescan() }
+                        onClick = { showRescanDialog = true }
                     )
                 }
 
                 item {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    SettingsHeader("Legal & Privacy")
+                    Spacer(modifier = Modifier.height(24.dp))
+                    SettingsHeader("Support & Privacy")
+                    
+                    val deviceName = android.os.Build.MODEL
+                    val androidVersion = android.os.Build.VERSION.RELEASE
+                    val feedbackEmail = "feedback@localnewsindia.in"
+                    val feedbackSubject = "BeatFlow Feedback"
+                    val feedbackBody = "Device: $deviceName\nAndroid Version: $androidVersion\n\nIssue / Suggestion:\n\nSteps to reproduce:"
+                    
+                    val encodedSubject = java.net.URLEncoder.encode(feedbackSubject, "UTF-8").replace("+", "%20")
+                    val encodedBody = java.net.URLEncoder.encode(feedbackBody, "UTF-8").replace("+", "%20")
+                    val mailtoUri = "mailto:$feedbackEmail?subject=$encodedSubject&body=$encodedBody"
+
+                    SettingsItem(
+                        icon = Icons.Default.Email,
+                        title = "Send Feedback",
+                        subtitle = "Help us improve BeatFlow",
+                        onClick = { 
+                            uriHandler.openUri(mailtoUri)
+                        }
+                    )
+                    
                     SettingsItem(
                         icon = Icons.Default.VerifiedUser,
                         title = "Privacy Policy",
-                        subtitle = "Learn how we protect your music library and data",
+                        subtitle = "How we protect your library data",
                         onClick = { 
                             uriHandler.openUri("https://www.localnewsindia.in/beatflow-privacy")
                         }
                     )
-                    SettingsItem(
-                        icon = Icons.Default.Info,
-                        title = "About BeatFlow",
-                        subtitle = "Version 1.0-beta04 (RC2)",
-                        onClick = { /* Show credits/version info */ }
-                    )
                 }
                 
                 item {
-                    Spacer(modifier = Modifier.height(32.dp))
-                    Box(
+                    Spacer(modifier = Modifier.height(48.dp))
+                    Column(
                         modifier = Modifier.fillMaxWidth(),
-                        contentAlignment = Alignment.Center
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
+                        Text(
+                            "BeatFlow v1.0 RC1",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = Color.Gray.copy(alpha = 0.8f),
+                            fontWeight = FontWeight.Bold
+                        )
                         Text(
                             "Made with ❤️ for Music Lovers",
                             style = MaterialTheme.typography.bodySmall,
-                            color = Color.Gray
+                            color = Color.Gray.copy(alpha = 0.5f)
                         )
+                        Spacer(modifier = Modifier.height(16.dp))
                     }
                 }
             }

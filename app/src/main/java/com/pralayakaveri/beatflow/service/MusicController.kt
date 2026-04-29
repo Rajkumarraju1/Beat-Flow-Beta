@@ -47,7 +47,7 @@ class MusicController @Inject constructor(
                 val index = mediaBrowser?.currentMediaItemIndex ?: -1
                 if (index != -1 && index != lastPlayedIndex && index in currentPlaylist.indices) {
                     val songId = currentPlaylist[index].id
-                    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                    controllerScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                         musicRepository.incrementPlayCount(songId)
                     }
                     lastPlayedIndex = index
@@ -62,7 +62,7 @@ class MusicController @Inject constructor(
             _currentSong.value = if (index in currentPlaylist.indices) currentPlaylist[index] else null
             
             // Reset tracker if user skipped before audio actively 'played'
-            if (!_isPlaying.value) {
+            if (mediaBrowser?.isPlaying == false) {
                 lastPlayedIndex = -1
             }
         }

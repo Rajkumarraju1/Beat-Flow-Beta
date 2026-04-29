@@ -23,6 +23,19 @@ class SettingsViewModel @Inject constructor(
             initialValue = null
         )
 
+    val useReducedMotion: StateFlow<Boolean> = musicRepository.getUseReducedMotion()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = false
+        )
+
+    fun updateReducedMotion(enabled: Boolean) {
+        viewModelScope.launch {
+            musicRepository.setUseReducedMotion(enabled)
+        }
+    }
+
     fun updateMinDurationEnabled(enabled: Boolean) {
         viewModelScope.launch {
             musicRepository.updateMinDurationEnabled(enabled)

@@ -21,6 +21,8 @@ class LibraryPreferencesManager @Inject constructor(
 ) {
     private object Keys {
         val SORT_ORDER = stringPreferencesKey("sort_order")
+        val IS_ONBOARDING_COMPLETED = androidx.datastore.preferences.core.booleanPreferencesKey("is_onboarding_completed")
+        val USE_REDUCED_MOTION = androidx.datastore.preferences.core.booleanPreferencesKey("use_reduced_motion")
     }
 
     val sortOrderFlow: Flow<SortOrder> = context.libraryPrefsDataStore.data.map { prefs ->
@@ -35,6 +37,26 @@ class LibraryPreferencesManager @Inject constructor(
     suspend fun setSortOrder(sortOrder: SortOrder) {
         context.libraryPrefsDataStore.edit { prefs ->
             prefs[Keys.SORT_ORDER] = sortOrder.name
+        }
+    }
+
+    val isOnboardingCompleted: Flow<Boolean> = context.libraryPrefsDataStore.data.map { prefs ->
+        prefs[Keys.IS_ONBOARDING_COMPLETED] ?: false
+    }
+
+    suspend fun setOnboardingCompleted(completed: Boolean) {
+        context.libraryPrefsDataStore.edit { prefs ->
+            prefs[Keys.IS_ONBOARDING_COMPLETED] = completed
+        }
+    }
+
+    val useReducedMotion: Flow<Boolean> = context.libraryPrefsDataStore.data.map { prefs ->
+        prefs[Keys.USE_REDUCED_MOTION] ?: false
+    }
+
+    suspend fun setUseReducedMotion(enabled: Boolean) {
+        context.libraryPrefsDataStore.edit { prefs ->
+            prefs[Keys.USE_REDUCED_MOTION] = enabled
         }
     }
 }

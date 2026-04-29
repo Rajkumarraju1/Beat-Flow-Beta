@@ -5,6 +5,7 @@ import com.pralayakaveri.beatflow.data.local.*
 import com.pralayakaveri.beatflow.data.provider.MediaStoreProvider
 import com.pralayakaveri.beatflow.domain.engine.IndexingMode
 import com.pralayakaveri.beatflow.domain.engine.LibraryIndexingEngine
+import com.pralayakaveri.beatflow.domain.engine.TriggerReason
 import com.pralayakaveri.beatflow.domain.model.Album
 import com.pralayakaveri.beatflow.domain.model.Artist
 import com.pralayakaveri.beatflow.domain.model.Song
@@ -15,6 +16,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -34,30 +37,35 @@ class MusicRepositoryImpl @Inject constructor(
 ) : MusicRepository {
 
     private var cachedSongs: List<Song> = emptyList()
+    private var cachedAlbums: List<Album> = emptyList()
+    private var cachedArtists: List<Artist> = emptyList()
 
-    override suspend fun getSongs(): List<Song> {
-        return when (indexingEngine.mode) {
+    override suspend fun getSongs(): List<Song> = withContext(Dispatchers.IO) {
+        if (cachedSongs.isNotEmpty()) return@withContext cachedSongs
+        
+        val songs = when (indexingEngine.mode) {
             IndexingMode.LEGACY, IndexingMode.SHADOW -> {
-                if (cachedSongs.isEmpty()) {
-                    cachedSongs = mediaStoreProvider.getAllSongs()
-                }
-                cachedSongs
+                mediaStoreProvider.getAllSongs()
             }
             IndexingMode.ACTIVE -> {
                 val songsWithIndex = librarySongDao.getAllSongsWithIndexSingle()
                 if (songsWithIndex.isEmpty()) {
-                    indexingEngine.startSync()
+                    // Fallback to MediaStore if DB is empty, but trigger sync in background
+                    indexingEngine.startSync(TriggerReason.INITIAL_SCAN)
                     mediaStoreProvider.getAllSongs()
                 } else {
                     songsWithIndex.map { it.toDomain() }
                 }
             }
         }
+        cachedSongs = songs
+        songs
     }
 
-    override suspend fun getAlbums(): List<Album> {
+    override suspend fun getAlbums(): List<Album> = withContext(Dispatchers.IO) {
+        if (cachedAlbums.isNotEmpty()) return@withContext cachedAlbums
         val songs = getSongs()
-        return songs.groupBy { it.albumId }.map { (albumId, albumSongs) ->
+        val albums = songs.groupBy { it.albumId }.map { (albumId, albumSongs) ->
             val firstSong = albumSongs.first()
             Album(
                 id = albumId,
@@ -69,11 +77,14 @@ class MusicRepositoryImpl @Inject constructor(
                 albumArtUri = firstSong.albumArtUri
             )
         }.sortedBy { it.title }
+        cachedAlbums = albums
+        albums
     }
 
-    override suspend fun getArtists(): List<Artist> {
+    override suspend fun getArtists(): List<Artist> = withContext(Dispatchers.IO) {
+        if (cachedArtists.isNotEmpty()) return@withContext cachedArtists
         val songs = getSongs()
-        return songs.groupBy { it.artistId }.map { (artistId, artistSongs) ->
+        val artists = songs.groupBy { it.artistId }.map { (artistId, artistSongs) ->
             val firstSong = artistSongs.first()
             Artist(
                 id = artistId,
@@ -82,6 +93,8 @@ class MusicRepositoryImpl @Inject constructor(
                 albumCount = artistSongs.distinctBy { it.albumId }.size
             )
         }.sortedBy { it.name }
+        cachedArtists = artists
+        artists
     }
 
     override fun getFavoriteSongs(): Flow<List<Song>> {
@@ -94,6 +107,10 @@ class MusicRepositoryImpl @Inject constructor(
                 songsMap[entity.id]
             }
         }
+    }
+
+    override fun getFavoriteIds(): Flow<Set<Long>> {
+        return favoritesDao.getAllFavoriteIds().map { it.toSet() }
     }
 
     override suspend fun toggleFavorite(songId: Long) {
@@ -261,10 +278,12 @@ class MusicRepositoryImpl @Inject constructor(
 
     override fun invalidateSongCache() {
         cachedSongs = emptyList()
+        cachedAlbums = emptyList()
+        cachedArtists = emptyList()
     }
 
-    override suspend fun startSync(reason: com.pralayakaveri.beatflow.domain.engine.TriggerReason) {
-        indexingEngine.startSync(reason)
+    override suspend fun startSync(reason: TriggerReason) {
+        indexingEngine.startSync(TriggerReason.INITIAL_SCAN)
     }
 
     override fun getSortOrder(): Flow<SortOrder> = libraryPreferencesManager.sortOrderFlow
@@ -287,7 +306,21 @@ class MusicRepositoryImpl @Inject constructor(
     override suspend fun forceRescan() {
         invalidateSongCache()
         librarySongDao.deleteAll()
-        startSync(com.pralayakaveri.beatflow.domain.engine.TriggerReason.MANUAL_TRIGGER)
+        startSync(TriggerReason.MANUAL_TRIGGER)
+    }
+
+    override suspend fun saveLyrics(songId: Long, lyrics: String) {
+        metadataDao.updateLyrics(songId, lyrics)
+    }
+
+    override suspend fun deleteLyrics(songId: Long) {
+        metadataDao.updateLyrics(songId, null)
+    }
+
+    override fun getUseReducedMotion(): Flow<Boolean> = libraryPreferencesManager.useReducedMotion
+
+    override suspend fun setUseReducedMotion(enabled: Boolean) {
+        libraryPreferencesManager.setUseReducedMotion(enabled)
     }
 
     private fun LibrarySongEntity.toDomain(): Song {
