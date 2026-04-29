@@ -107,7 +107,6 @@ class MainViewModel @Inject constructor(
                 handleSongChange(song)
             }
         }
-        startInitialSync()
     }
 
     private suspend fun handleSongChange(song: Song?) {

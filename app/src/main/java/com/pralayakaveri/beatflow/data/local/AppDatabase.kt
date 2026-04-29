@@ -120,5 +120,11 @@ abstract class AppDatabase : RoomDatabase() {
                 """)
             }
         }
+
+        val MIGRATION_11_12 = object : androidx.room.migration.Migration(11, 12) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `song_metadata` ADD COLUMN `lyrics` TEXT")
+            }
+        }
     }
 }
