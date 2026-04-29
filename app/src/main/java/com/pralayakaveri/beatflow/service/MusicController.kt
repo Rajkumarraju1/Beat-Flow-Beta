@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 
+@Singleton
 class MusicController @Inject constructor(
     @ApplicationContext private val context: Context,
     private val musicRepository: com.pralayakaveri.beatflow.domain.repository.MusicRepository,

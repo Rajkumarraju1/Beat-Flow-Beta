@@ -60,78 +60,77 @@ class GalaxyViewModel @Inject constructor(
     private fun loadGalaxy() {
         viewModelScope.launch {
             musicRepository.getAllSongs().collect { songs ->
-                // Apply a global limit for total songs handled in Galaxy Mode for performance
-                val limitedSongs = songs.take(1000) 
+                _isLoading.value = true
+                val limitedSongs = songs.take(1000)
                 
-                val genreGroups = limitedSongs.groupBy { it.genre ?: "Interstellar Void" }
-                val genreNodes = genreGroups.entries.mapIndexed { gIndex, (genre, genreSongs) ->
-                    val artistGroups = genreSongs.groupBy { it.artist }
-                    
-                    val artistNodes = artistGroups.entries.mapIndexed { aIndex, (artist, artistSongs) ->
-                        val songNodes = if (artistSongs.size < 50) { 
-                            artistSongs.mapIndexed { sIndex, song ->
-                                // Songs rotate around artists
-                                // Distance increases with index for rings
-                                val ringIndex = sIndex / 5 // 5 songs per ring
-                                val orbitRadius = 80f + ringIndex * 40f
-                                val speed = 0.5f / (ringIndex + 1f) // Outer move slower
-                                val direction = if (ringIndex % 2 == 0) 1 else -1
-                                
-                                GalaxyNode(
-                                    id = song.id.toString(),
-                                    label = song.title.cleanSongTitle(),
-                                    type = NodeType.SONG,
-                                    position = Offset.Zero, // Relative to artist
-                                    color = randomPastelColor(),
-                                    song = song,
-                                    orbitRadius = orbitRadius,
-                                    orbitSpeed = speed,
-                                    orbitDirection = direction,
-                                    initialAngle = Random.nextFloat() * 2f * kotlin.math.PI.toFloat()
-                                )
-                            }
-                        } else emptyList()
+                val genreNodes = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                    val genreGroups = limitedSongs.groupBy { it.genre ?: "Interstellar Void" }
+                    genreGroups.entries.mapIndexed { gIndex, (genre, genreSongs) ->
+                        val artistGroups = genreSongs.groupBy { it.artist }
+                        
+                        val artistNodes = artistGroups.entries.mapIndexed { aIndex, (artist, artistSongs) ->
+                            val songNodes = if (artistSongs.size < 50) { 
+                                artistSongs.mapIndexed { sIndex, song ->
+                                    val ringIndex = sIndex / 5
+                                    val orbitRadius = 80f + ringIndex * 40f
+                                    val speed = 0.5f / (ringIndex + 1f)
+                                    val direction = if (ringIndex % 2 == 0) 1 else -1
+                                    
+                                    GalaxyNode(
+                                        id = song.id.toString(),
+                                        label = song.title.cleanSongTitle(),
+                                        type = NodeType.SONG,
+                                        position = Offset.Zero,
+                                        color = randomPastelColor(),
+                                        song = song,
+                                        orbitRadius = orbitRadius,
+                                        orbitSpeed = speed,
+                                        orbitDirection = direction,
+                                        initialAngle = Random.nextFloat() * 2f * kotlin.math.PI.toFloat()
+                                    )
+                                }
+                            } else emptyList()
 
+                            GalaxyNode(
+                                id = "artist_$artist",
+                                label = artist,
+                                type = NodeType.ARTIST,
+                                position = getSpiralOffset(aIndex, 400f),
+                                color = randomPastelColor(),
+                                songCount = artistSongs.size,
+                                children = songNodes
+                            )
+                        }
                         GalaxyNode(
-                            id = "artist_$artist",
-                            label = artist,
-                            type = NodeType.ARTIST,
-                            position = getSpiralOffset(aIndex, 400f),
+                            id = "genre_$genre",
+                            label = genre,
+                            type = NodeType.GENRE,
+                            position = getSpiralOffset(gIndex, 1200f),
                             color = randomPastelColor(),
-                            songCount = artistSongs.size,
-                            children = songNodes
+                            songCount = genreSongs.size,
+                            children = artistNodes
                         )
                     }
-                    GalaxyNode(
-                        id = "genre_$genre",
-                        label = genre,
-                        type = NodeType.GENRE,
-                        position = getSpiralOffset(gIndex, 1200f),
-                        color = randomPastelColor(),
-                        songCount = genreSongs.size,
-                        children = artistNodes
-                    )
                 }
+
                 _nodes.value = genreNodes
                 if (genreNodes.isNotEmpty()) {
-                    // Calculate the visual bounding box of the galaxy for "Fit-to-Bounds" framing
-                    var minX = Float.MAX_VALUE
-                    var maxX = Float.MIN_VALUE
-                    var minY = Float.MAX_VALUE
-                    var maxY = Float.MIN_VALUE
-                    
-                    genreNodes.forEach {
-                        minX = minOf(minX, it.position.x)
-                        maxX = maxOf(maxX, it.position.x)
-                        minY = minOf(minY, it.position.y)
-                        maxY = maxOf(maxY, it.position.y)
+                    val midPoint = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                        var minX = Float.MAX_VALUE
+                        var maxX = Float.MIN_VALUE
+                        var minY = Float.MAX_VALUE
+                        var maxY = Float.MIN_VALUE
+                        
+                        genreNodes.forEach {
+                            minX = minOf(minX, it.position.x)
+                            maxX = maxOf(maxX, it.position.x)
+                            minY = minOf(minY, it.position.y)
+                            maxY = maxOf(maxY, it.position.y)
+                        }
+                        
+                        Offset(-(minX + maxX) / 2f, -(minY + maxY) / 2f)
                     }
-                    
-                    val midX = (minX + maxX) / 2f
-                    val midY = (minY + maxY) / 2f
-                    
-                    // Initial focus on the geometric midpoint of the bounds
-                    _initialFocusOffset.value = Offset(-midX, -midY)
+                    _initialFocusOffset.value = midPoint
                 }
                 _isLoading.value = false
             }

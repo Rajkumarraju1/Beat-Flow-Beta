@@ -97,28 +97,31 @@ fun GalaxyScreen(
 
     // Palette extraction
     LaunchedEffect(nodes) {
-        nodes.forEach { genreNode ->
-            genreNode.children.forEach { artistNode ->
-                artistNode.children.forEach { songNode ->
-                    val song = songNode.song
-                    if (song?.albumArtUri != null && !bitmaps.containsKey(song.id)) {
-                        launch {
-                            val request = ImageRequest.Builder(context)
-                                .data(song.albumArtUri)
-                                .size(200, 200)
-                                .allowHardware(false)
-                                .build()
-                            val result = imageLoader.execute(request)
-                            result.drawable?.let { drawable ->
-                                val bitmap = drawable.toBitmap()
-                                bitmaps[song.id] = bitmap.asImageBitmap()
-                                
-                                androidx.palette.graphics.Palette.from(bitmap).generate { palette ->
-                                    val swatch = palette?.vibrantSwatch ?: palette?.dominantSwatch
-                                    swatch?.let {
-                                        extractedColors[song.id] = Color(it.rgb)
-                                    }
-                                }
+        val songsToProcess = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            nodes.flatMap { g -> 
+                g.children.flatMap { a -> 
+                    a.children.mapNotNull { s -> s.song } 
+                } 
+            }.distinctBy { it.id }
+        }
+
+        songsToProcess.forEach { song ->
+            if (song.albumArtUri != null && !bitmaps.containsKey(song.id)) {
+                launch {
+                    val request = ImageRequest.Builder(context)
+                        .data(song.albumArtUri)
+                        .size(200, 200)
+                        .allowHardware(false)
+                        .build()
+                    val result = imageLoader.execute(request)
+                    result.drawable?.let { drawable ->
+                        val bitmap = drawable.toBitmap()
+                        bitmaps[song.id] = bitmap.asImageBitmap()
+                        
+                        androidx.palette.graphics.Palette.from(bitmap).generate { palette ->
+                            val swatch = palette?.vibrantSwatch ?: palette?.dominantSwatch
+                            swatch?.let {
+                                extractedColors[song.id] = Color(it.rgb)
                             }
                         }
                     }
