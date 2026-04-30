@@ -109,19 +109,36 @@ class LibraryIndexingEngineImpl @Inject constructor(
             _indexingState.value = IndexingState.SCANNING
             val mediaStoreHeadless = mediaStoreProvider.getHeadlessSongs()
             
+            // PREFLIGHT CHECK: Avoid clearing library if MediaStore is suspiciously empty
+            if (mediaStoreHeadless.isEmpty() && forceFullScan) {
+                android.util.Log.w("LibraryIndexingEngine", "Preflight ABORT: MediaStore is empty. Not clearing library.")
+                _indexingState.value = IndexingState.IDLE
+                return@withContext
+            }
+
             _indexingState.value = IndexingState.RECONCILING
             
-            database.withTransaction {
-                val existingIndex = indexDao.getAllIndexEntries().associateBy { it.songId }
-                val mediaStoreIds = mediaStoreHeadless.map { it.id }.toSet()
+            try {
+                database.withTransaction {
+                    if (forceFullScan) {
+                        android.util.Log.i("LibraryIndexingEngine", "ForceFullScan triggered: Performing atomic library wipe.")
+                        librarySongDao.deleteAll()
+                        indexDao.deleteAll()
+                    }
+
+                    val existingIndex = if (forceFullScan) emptyMap() else indexDao.getAllIndexEntries().associateBy { it.songId }
+                    val existingMirrorIds = if (forceFullScan) emptySet() else librarySongDao.getAllSongsSingle().map { it.id }.toSet()
+                    val mediaStoreIds = mediaStoreHeadless.map { it.id }.toSet()
                 
                 val idsToDeepScan = mutableListOf<Long>()
                 
                 mediaStoreHeadless.forEach { msHeadless ->
                     val existing = existingIndex[msHeadless.id]
+                    val inMirror = existingMirrorIds.contains(msHeadless.id)
                     val primaryHash = generatePrimaryHash(msHeadless.path, msHeadless.size)
                     
                     if (existing == null) {
+                        android.util.Log.v("LibraryIndexingEngine", "New song discovered: ${msHeadless.path} (ID: ${msHeadless.id})")
                         val recoveryCandidate = indexDao.findByRecoveryHash(primaryHash)
                         if (recoveryCandidate != null) {
                             if (_mode == IndexingMode.ACTIVE) {
@@ -135,7 +152,12 @@ class LibraryIndexingEngineImpl @Inject constructor(
                             idsToDeepScan.add(msHeadless.id)
                         }
                     } else {
-                        if (forceFullScan || msHeadless.dateModified * 1000 > existing.lastSyncedAt) {
+                        val needsUpdate = forceFullScan || 
+                                         !inMirror || 
+                                         (msHeadless.dateModified * 1000 > existing.lastSyncedAt)
+
+                        if (needsUpdate) {
+                            android.util.Log.v("LibraryIndexingEngine", "Updating song: ${msHeadless.path} (ID: ${msHeadless.id}, reason: fullScan=$forceFullScan, inMirror=$inMirror)")
                             indexDao.insertOrUpdate(existing.copy(
                                 isOrphan = false,
                                 recoveryHash = primaryHash,
@@ -145,6 +167,7 @@ class LibraryIndexingEngineImpl @Inject constructor(
                             idsToDeepScan.add(msHeadless.id)
                             updated++
                         } else if (existing.isOrphan) {
+                            android.util.Log.v("LibraryIndexingEngine", "Marking song as non-orphan: ${msHeadless.id}")
                             indexDao.updateOrphanStatus(msHeadless.id, false, null)
                         }
                     }
@@ -191,7 +214,21 @@ class LibraryIndexingEngineImpl @Inject constructor(
                         removed = orphansInDb.size
                     }
                 }
+
+                // FAIL-FAST GUARD: If MediaStore has songs, but we inserted NOTHING during a force scan,
+                // something is fundamentally broken (DB write error, permissions, etc.)
+                if (mediaStoreHeadless.isNotEmpty() && forceFullScan && added == 0) {
+                    val errorMsg = "CRITICAL: Force rescan found ${mediaStoreHeadless.size} songs but ADDED 0 to DB. Aborting transaction to prevent data loss."
+                    android.util.Log.e("LibraryIndexingEngine", errorMsg)
+                    throw IllegalStateException(errorMsg)
+                }
             }
+        } catch (e: Exception) {
+            android.util.Log.e("INDEX_METRIC", "rescan_failed processed=${mediaStoreHeadless.size} added=$added reason=${e.message}")
+            android.util.Log.e("LibraryIndexingEngine", "Transaction failed (Library preserved)", e)
+            _indexingState.value = IndexingState.ERROR
+            return@withContext
+        }
 
             _indexingState.value = IndexingState.IDLE
             
@@ -228,6 +265,7 @@ class LibraryIndexingEngineImpl @Inject constructor(
     }
 
     private suspend fun insertNewSong(song: Song, primary: String, secondary: String) {
+        android.util.Log.d("LibraryIndexingEngine", "Inserting NEW song: ${song.title} (ID: ${song.id})")
         indexDao.insertOrUpdate(
             LibraryIndexEntity(
                 songId = song.id,
@@ -239,8 +277,9 @@ class LibraryIndexingEngineImpl @Inject constructor(
         )
         updateSongMirror(song)
     }
-
+ 
     private suspend fun updateSongMirror(song: Song) {
+        android.util.Log.v("LibraryIndexingEngine", "Mirroring song to DB: ${song.title} (ID: ${song.id})")
         librarySongDao.insertSongs(listOf(
             LibrarySongEntity(
                 id = song.id,

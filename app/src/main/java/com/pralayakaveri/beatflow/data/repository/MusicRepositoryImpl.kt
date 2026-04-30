@@ -12,6 +12,7 @@ import com.pralayakaveri.beatflow.domain.model.Song
 import com.pralayakaveri.beatflow.domain.model.SortOrder
 import com.pralayakaveri.beatflow.domain.repository.MusicRepository
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.combine
@@ -23,6 +24,7 @@ import javax.inject.Singleton
 
 @Singleton
 class MusicRepositoryImpl @Inject constructor(
+    private val database: AppDatabase,
     private val mediaStoreProvider: MediaStoreProvider,
     private val favoritesDao: FavoritesDao,
     private val playCountDao: PlayCountDao,
@@ -31,6 +33,7 @@ class MusicRepositoryImpl @Inject constructor(
     private val playlistDao: PlaylistDao,
     private val artistImageDao: ArtistImageDao,
     private val librarySongDao: LibrarySongDao,
+    private val indexDao: LibraryIndexDao,
     private val indexingEngine: LibraryIndexingEngine,
     private val libraryPreferencesManager: LibraryPreferencesManager,
     private val filterPreferencesManager: com.pralayakaveri.beatflow.domain.util.FilterPreferencesManager
@@ -304,9 +307,9 @@ class MusicRepositoryImpl @Inject constructor(
     }
 
     override suspend fun forceRescan() {
+        android.util.Log.i("MusicRepository", "FORCE RESCAN requested.")
         invalidateSongCache()
-        librarySongDao.deleteAll()
-        startSync(TriggerReason.MANUAL_TRIGGER)
+        indexingEngine.startSync(TriggerReason.MANUAL_TRIGGER, forceFullScan = true)
     }
 
     override suspend fun saveLyrics(songId: Long, lyrics: String) {
@@ -321,6 +324,10 @@ class MusicRepositoryImpl @Inject constructor(
 
     override suspend fun setUseReducedMotion(enabled: Boolean) {
         libraryPreferencesManager.setUseReducedMotion(enabled)
+    }
+
+    override fun getIndexingState(): StateFlow<com.pralayakaveri.beatflow.domain.engine.IndexingState> {
+        return indexingEngine.indexingState
     }
 
     private fun LibrarySongEntity.toDomain(): Song {

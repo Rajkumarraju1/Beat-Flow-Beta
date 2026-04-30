@@ -27,4 +27,7 @@ interface LibraryIndexDao {
 
     @Query("DELETE FROM library_index WHERE songId = :songId")
     suspend fun deleteEntry(songId: Long)
+
+    @Query("DELETE FROM library_index")
+    suspend fun deleteAll()
 }

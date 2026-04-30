@@ -42,9 +42,28 @@ class MusicPlaybackService : MediaLibraryService() {
             }
             
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                val reasonStr = when(reason) {
+                    androidx.media3.common.Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST -> "USER_REQUEST"
+                    androidx.media3.common.Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS -> "AUDIO_FOCUS_LOSS"
+                    androidx.media3.common.Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY -> "AUDIO_BECOMING_NOISY"
+                    androidx.media3.common.Player.PLAY_WHEN_READY_CHANGE_REASON_REMOTE -> "REMOTE"
+                    else -> "UNKNOWN($reason)"
+                }
+                android.util.Log.d("MusicPlaybackService", "onPlayWhenReadyChanged: $playWhenReady, reason: $reasonStr")
                 if (!playWhenReady) {
                     saveCurrentSession()
                 }
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                val stateStr = when(playbackState) {
+                    androidx.media3.common.Player.STATE_IDLE -> "IDLE"
+                    androidx.media3.common.Player.STATE_BUFFERING -> "BUFFERING"
+                    androidx.media3.common.Player.STATE_READY -> "READY"
+                    androidx.media3.common.Player.STATE_ENDED -> "ENDED"
+                    else -> "UNKNOWN"
+                }
+                android.util.Log.d("MusicPlaybackService", "onPlaybackStateChanged: $stateStr")
             }
 
             override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {

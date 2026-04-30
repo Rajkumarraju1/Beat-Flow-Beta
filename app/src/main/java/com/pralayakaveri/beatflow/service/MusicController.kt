@@ -18,16 +18,45 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 
-class MusicController(
+class MusicController internal constructor(
     private val context: Context,
     private val musicRepository: com.pralayakaveri.beatflow.domain.repository.MusicRepository,
     private val sessionManager: com.pralayakaveri.beatflow.domain.util.PlaybackSessionManager
 ) {
+    companion object {
+        @get:Synchronized
+        private var instanceCount = 0
+        
+        @get:Synchronized
+        @set:Synchronized
+        private var sInstance: MusicController? = null
+
+        fun getInstance(
+            context: Context,
+            musicRepository: com.pralayakaveri.beatflow.domain.repository.MusicRepository,
+            sessionManager: com.pralayakaveri.beatflow.domain.util.PlaybackSessionManager
+        ): MusicController {
+            if (sInstance == null) {
+                sInstance = MusicController(context, musicRepository, sessionManager)
+            }
+            return sInstance!!
+        }
+    }
+
     private val instanceId = java.util.UUID.randomUUID().toString().substring(0, 8)
     
+    init {
+        instanceCount++
+        android.util.Log.e("MusicController", "Instance count = $instanceCount [ID: $instanceId]")
+        if (instanceCount > 1) {
+            throw IllegalStateException("CRITICAL: Multiple MusicController instances detected! ($instanceCount)")
+        }
+    }
     private val controllerScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main + kotlinx.coroutines.SupervisorJob())
     private var browserFuture: ListenableFuture<MediaBrowser>? = null
     private var mediaBrowser: MediaBrowser? = null
+    
+    private var isUiLocked = false
 
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
@@ -82,7 +111,6 @@ class MusicController(
     private var sleepTimer: android.os.CountDownTimer? = null
 
     init {
-        android.util.Log.d("MusicController", "Initializing MusicController instance: $instanceId")
         val sessionToken = SessionToken(context, ComponentName(context, MusicPlaybackService::class.java))
         android.util.Log.d("MusicController", "Building MediaBrowser for instance: $instanceId")
         browserFuture = MediaBrowser.Builder(context, sessionToken).buildAsync()
@@ -97,14 +125,15 @@ class MusicController(
                     _repeatMode.value = it.repeatMode
                     
                     // CRITICAL GUARD: Only restore session if nothing is currently playing/loaded
-                    if (it.mediaItemCount == 0) {
+                    // AND we haven't already loaded items locally.
+                    if (it.mediaItemCount == 0 && currentPlaylist.isEmpty()) {
                         android.util.Log.d("MusicController", "Restoring last session for instance: $instanceId")
                         restoreLastSession()
                     } else {
-                        android.util.Log.d("MusicController", "Session already active, skipping restore for instance: $instanceId")
+                        android.util.Log.d("MusicController", "Session already active (items: ${it.mediaItemCount}, local: ${currentPlaylist.size}), skipping restore for instance: $instanceId")
                         // Synchronize local state with existing session
-                        _currentSong.value = it.currentMediaItem?.let { item -> 
-                            currentPlaylist.find { s -> s.id.toString() == item.mediaId }
+                        if (it.mediaItemCount > 0) {
+                            syncLocalStateWithSession(it)
                         }
                     }
                 }
@@ -112,6 +141,28 @@ class MusicController(
                 android.util.Log.e("MusicController", "MediaBrowser connection failed for instance: $instanceId", e)
             }
         }, ContextCompat.getMainExecutor(context))
+    }
+
+    private fun syncLocalStateWithSession(browser: MediaBrowser) {
+        controllerScope.launch {
+            // Attempt to recover the playlist from the browser items
+            val items = mutableListOf<Song>()
+            val allSongs = musicRepository.getSongs()
+            val songMap = allSongs.associateBy { it.id.toString() }
+            
+            for (i in 0 until browser.mediaItemCount) {
+                val mediaId = browser.getMediaItemAt(i).mediaId
+                songMap[mediaId]?.let { items.add(it) }
+            }
+            
+            if (items.isNotEmpty()) {
+                currentPlaylist = items
+                _currentSong.value = browser.currentMediaItem?.let { item -> 
+                    items.find { s -> s.id.toString() == item.mediaId }
+                }
+                android.util.Log.d("MusicController", "Recovered ${items.size} items from active session for instance: $instanceId")
+            }
+        }
     }
 
     private fun restoreLastSession() {
@@ -179,6 +230,7 @@ class MusicController(
     }
 
     fun playSongs(songs: List<Song>, startIndex: Int = 0) {
+        android.util.Log.d("MusicController", "playSongs called: ${songs.size} items, index: $startIndex", Throwable())
         currentPlaylist = songs
         mediaBrowser?.let { browser ->
             val mediaItems = songs.map { song ->
@@ -194,9 +246,28 @@ class MusicController(
         }
     }
     
+    private var lastToggleTime = 0L
+
     fun togglePlayPause() {
+        if (isUiLocked) {
+            android.util.Log.w("MusicController", "Ignoring togglePlayPause: UI is LOCKED")
+            return
+        }
+        
+        val now = System.currentTimeMillis()
+        if (now - lastToggleTime < 500) {
+            android.util.Log.w("MusicController", "Ignoring togglePlayPause: debounced (too fast)")
+            return
+        }
+        lastToggleTime = now
+
         mediaBrowser?.let {
-            if (it.isPlaying) it.pause() else it.play()
+            if (it.isPlaying) {
+                android.util.Log.d("MusicController", "PAUSE triggered by togglePlayPause (UI)")
+                it.pause()
+            } else {
+                it.play()
+            }
         }
     }
     
@@ -235,6 +306,7 @@ class MusicController(
 
             override fun onFinish() {
                 _sleepTimerTimeRemaining.value = null
+                android.util.Log.d("MusicController", "PAUSE triggered by sleepTimer", Throwable())
                 mediaBrowser?.pause()
             }
         }.start()
@@ -244,6 +316,11 @@ class MusicController(
         sleepTimer?.cancel()
         sleepTimer = null
         _sleepTimerTimeRemaining.value = null
+    }
+
+    fun setUiLocked(locked: Boolean) {
+        isUiLocked = locked
+        android.util.Log.d("MusicController", "isUiLocked set to: $locked")
     }
 
     fun destroy() {

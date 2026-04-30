@@ -22,6 +22,7 @@ object MediaModule {
         musicRepository: MusicRepository,
         sessionManager: PlaybackSessionManager
     ): MusicController {
-        return MusicController(context, musicRepository, sessionManager)
+        android.util.Log.d("MediaModule", "Hilt providing MusicController instance")
+        return MusicController.getInstance(context, musicRepository, sessionManager)
     }
 }

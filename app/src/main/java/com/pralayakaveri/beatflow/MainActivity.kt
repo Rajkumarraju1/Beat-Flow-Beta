@@ -36,6 +36,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        android.util.Log.d("MainActivity", "MainActivity onCreate")
         super.onCreate(savedInstanceState)
         
         requestStoragePermissions()
@@ -104,6 +105,11 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         mainViewModel.setUiVisibility(false)
+    }
+
+    override fun onDestroy() {
+        android.util.Log.d("MainActivity", "MainActivity onDestroy")
+        super.onDestroy()
     }
 
     private fun requestStoragePermissions() {

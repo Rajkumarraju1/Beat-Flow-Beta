@@ -5,6 +5,8 @@ import com.pralayakaveri.beatflow.domain.model.Artist
 import com.pralayakaveri.beatflow.domain.model.Song
 import kotlinx.coroutines.flow.Flow
 
+import kotlinx.coroutines.flow.StateFlow
+
 interface MusicRepository {
     suspend fun getSongs(): List<Song>
     suspend fun getAlbums(): List<Album>
@@ -55,4 +57,6 @@ interface MusicRepository {
 
     fun getUseReducedMotion(): Flow<Boolean>
     suspend fun setUseReducedMotion(enabled: Boolean)
+
+    fun getIndexingState(): StateFlow<com.pralayakaveri.beatflow.domain.engine.IndexingState>
 }

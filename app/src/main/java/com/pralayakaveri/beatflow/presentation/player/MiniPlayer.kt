@@ -36,7 +36,8 @@ fun MiniPlayer(
     onPlayPause: () -> Unit,
     onExpand: () -> Unit,
     onNext: () -> Unit,
-    onPrevious: () -> Unit
+    onPrevious: () -> Unit,
+    enabled: Boolean = true
 ) {
     var offsetX by remember { mutableStateOf(0f) }
     val progress = if (song.duration > 0) currentPosition.toFloat() / song.duration else 0f
@@ -60,7 +61,7 @@ fun MiniPlayer(
                     offsetX += dragAmount
                 }
             }
-            .clickable { onExpand() },
+            .clickable(enabled = enabled) { onExpand() },
         shape = RoundedCornerShape(16.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
         colors = CardDefaults.cardColors(
@@ -116,6 +117,7 @@ fun MiniPlayer(
                 }
                 IconButton(
                     onClick = onPlayPause,
+                    enabled = enabled,
                     modifier = Modifier
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.1f))

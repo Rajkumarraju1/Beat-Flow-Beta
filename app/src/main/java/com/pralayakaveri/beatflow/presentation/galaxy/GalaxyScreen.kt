@@ -138,6 +138,13 @@ fun GalaxyScreen(
     var rippleCenter by remember { mutableStateOf(Offset.Zero) }
     val rippleRadius = remember { Animatable(0f) }
 
+    DisposableEffect(Unit) {
+        mainViewModel.lockUiPlayback(true)
+        onDispose {
+            mainViewModel.lockUiPlayback(false)
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(

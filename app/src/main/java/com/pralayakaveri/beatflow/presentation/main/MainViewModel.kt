@@ -28,6 +28,7 @@ class MainViewModel @Inject constructor(
     private val syncManager: com.pralayakaveri.beatflow.domain.util.LyricsSyncManager,
     private val libraryPreferencesManager: LibraryPreferencesManager
 ) : ViewModel() {
+    private val viewModelId = java.util.UUID.randomUUID().toString().substring(0, 8)
 
     private val visualizerHelper = com.pralayakaveri.beatflow.domain.util.AudioVisualizerHelper()
     private var positionUpdateJob: Job? = null
@@ -44,7 +45,11 @@ class MainViewModel @Inject constructor(
 
     private val _currentPosition = MutableStateFlow(0L)
     val currentPosition: StateFlow<Long> = _currentPosition.asStateFlow()
+    
+    private val _errorEvents = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val errorEvents = _errorEvents.asSharedFlow()
 
+    val indexingState = musicRepository.getIndexingState()
     val isPlaying = musicController.isPlaying
     val currentSong = musicController.currentSong
 
@@ -102,9 +107,20 @@ class MainViewModel @Inject constructor(
     val sleepTimerTimeRemaining: StateFlow<Long?> = musicController.sleepTimerTimeRemaining
 
     init {
+        android.util.Log.d("MainViewModel", "MainViewModel INIT [ID: $viewModelId] with MusicController: ${musicController.hashCode()}")
         viewModelScope.launch {
             currentSong.collect { song ->
                 handleSongChange(song)
+            }
+        }
+        viewModelScope.launch {
+            indexingState.collect { state ->
+                if (state == com.pralayakaveri.beatflow.domain.engine.IndexingState.ERROR) {
+                    retryCount++
+                    _errorEvents.emit("Rescan failed. Your library is unchanged.")
+                } else if (state == com.pralayakaveri.beatflow.domain.engine.IndexingState.IDLE) {
+                    retryCount = 0
+                }
             }
         }
     }
@@ -241,6 +257,7 @@ class MainViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        android.util.Log.d("MainViewModel", "MainViewModel onCleared [ID: $viewModelId]")
         super.onCleared()
         visualizerHelper.stopMonitoring()
         stopPositionUpdates()
@@ -260,7 +277,32 @@ class MainViewModel @Inject constructor(
     fun setTheme(themeType: com.pralayakaveri.beatflow.presentation.theme.ThemeType) = viewModelScope.launch { themeManager.setTheme(themeType) }
     fun toggleFavorite(targetSongId: Long) = viewModelScope.launch { musicRepository.toggleFavorite(targetSongId) }
     fun onSearchQueryChange(query: String) { _searchQuery.value = query }
-    fun playSongs(songs: List<Song>, startIndex: Int = 0) = musicController.playSongs(songs, startIndex)
+    private var retryCount = 0
+
+    fun forceRescan() {
+        if (indexingState.value != com.pralayakaveri.beatflow.domain.engine.IndexingState.IDLE) {
+            android.util.Log.w("MainViewModel", "Rescan ignored: Already running.")
+            return
+        }
+
+        viewModelScope.launch {
+            val backoffMs = when (retryCount) {
+                0 -> 0L
+                1 -> 2000L
+                else -> 5000L
+            }
+            
+            if (backoffMs > 0) {
+                android.util.Log.i("MainViewModel", "Applying retry backoff: ${backoffMs}ms")
+                delay(backoffMs)
+            }
+            
+            musicRepository.forceRescan()
+            // Reset retry count on successful trigger (not necessarily completion)
+            // The success check happens in the observer
+        }
+    }
+
     fun togglePlayPause() = musicController.togglePlayPause()
     fun skipToNext() = musicController.skipToNext()
     fun skipToPrevious() = musicController.skipToPrevious()
@@ -282,9 +324,11 @@ class MainViewModel @Inject constructor(
     fun addSongToPlaylist(playlistId: Long, songId: Long) = viewModelScope.launch(Dispatchers.IO) { musicRepository.addSongToPlaylist(playlistId, songId) }
     fun removeSongFromPlaylist(playlistId: Long, songId: Long) = viewModelScope.launch(Dispatchers.IO) { musicRepository.removeSongFromPlaylist(playlistId, songId) }
     fun deletePlaylist(playlistId: Long) = viewModelScope.launch(Dispatchers.IO) { musicRepository.deletePlaylist(playlistId) }
+    fun lockUiPlayback(locked: Boolean) = musicController.setUiLocked(locked)
     fun invalidateSongCache() = musicRepository.invalidateSongCache()
     fun startInitialSync() = viewModelScope.launch { musicRepository.startSync(com.pralayakaveri.beatflow.domain.engine.TriggerReason.INITIAL_SCAN) }
 
+    fun playSongs(songs: List<Song>, startIndex: Int = 0) = musicController.playSongs(songs, startIndex)
     fun saveLyrics(song: Song, content: String) {
         viewModelScope.launch(Dispatchers.IO) {
             musicRepository.saveLyrics(song.id, content)
