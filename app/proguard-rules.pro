@@ -3,6 +3,13 @@
 -keep interface dagger.hilt.** { *; }
 -keep @dagger.hilt.android.lifecycle.HiltViewModel class * { *; }
 
+# --- Hilt Work ---
+-keep class androidx.hilt.work.** { *; }
+-keep @androidx.hilt.work.HiltWorker class * { *; }
+-keepclassmembers class * extends androidx.work.ListenableWorker {
+    public <init>(android.content.Context, androidx.work.WorkerParameters);
+}
+
 # --- Room ---
 -keep class * extends androidx.room.RoomDatabase
 -keep @androidx.room.Entity class * { *; }
@@ -40,3 +47,8 @@
 -dontwarn androidx.media3.**
 -dontwarn com.google.common.**
 -dontwarn org.checkerframework.**
+
+# --- Explicit App Logic Keep Rules ---
+-keep class com.pralayakaveri.beatflow.data.worker.MetadataWorker { *; }
+-keep class com.pralayakaveri.beatflow.service.MusicController { *; }
+-keep class com.pralayakaveri.beatflow.presentation.main.MainViewModel { *; }

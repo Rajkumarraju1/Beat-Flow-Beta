@@ -40,6 +40,7 @@ import kotlinx.coroutines.launch
 fun GalaxyScreen(
     onNavigateBack: () -> Unit,
     onPlaySong: (Song) -> Unit,
+    mainViewModel: com.pralayakaveri.beatflow.presentation.main.MainViewModel,
     viewModel: GalaxyViewModel = hiltViewModel()
 ) {
     val nodes by viewModel.nodes.collectAsState()
@@ -81,7 +82,6 @@ fun GalaxyScreen(
     )
 
     // Pulse animation for playing song
-    val mainViewModel: com.pralayakaveri.beatflow.presentation.main.MainViewModel = hiltViewModel()
     val currentSong by mainViewModel.currentSong.collectAsState()
     val isPlaying by mainViewModel.isPlaying.collectAsState()
     

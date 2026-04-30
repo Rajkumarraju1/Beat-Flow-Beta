@@ -20,6 +20,7 @@ class MusicPlaybackService : MediaLibraryService() {
     private val serviceScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO + kotlinx.coroutines.SupervisorJob())
 
     override fun onCreate() {
+        android.util.Log.d("MusicPlaybackService", "Service onCreate - Initializing ExoPlayer")
         super.onCreate()
         
         val audioAttributes = AudioAttributes.Builder()
@@ -89,10 +90,12 @@ class MusicPlaybackService : MediaLibraryService() {
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? {
+        android.util.Log.d("MusicPlaybackService", "onGetSession from: ${controllerInfo.packageName}")
         return mediaLibrarySession
     }
 
     override fun onDestroy() {
+        android.util.Log.d("MusicPlaybackService", "Service onDestroy - Releasing Resources")
         saveCurrentSession()
         serviceScope.cancel()
         mediaLibrarySession.run {

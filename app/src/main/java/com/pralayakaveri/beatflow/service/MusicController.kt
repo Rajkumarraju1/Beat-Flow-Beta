@@ -18,12 +18,13 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 
-@Singleton
-class MusicController @Inject constructor(
-    @ApplicationContext private val context: Context,
+class MusicController(
+    private val context: Context,
     private val musicRepository: com.pralayakaveri.beatflow.domain.repository.MusicRepository,
     private val sessionManager: com.pralayakaveri.beatflow.domain.util.PlaybackSessionManager
 ) {
+    private val instanceId = java.util.UUID.randomUUID().toString().substring(0, 8)
+    
     private val controllerScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main + kotlinx.coroutines.SupervisorJob())
     private var browserFuture: ListenableFuture<MediaBrowser>? = null
     private var mediaBrowser: MediaBrowser? = null
@@ -81,18 +82,34 @@ class MusicController @Inject constructor(
     private var sleepTimer: android.os.CountDownTimer? = null
 
     init {
+        android.util.Log.d("MusicController", "Initializing MusicController instance: $instanceId")
         val sessionToken = SessionToken(context, ComponentName(context, MusicPlaybackService::class.java))
+        android.util.Log.d("MusicController", "Building MediaBrowser for instance: $instanceId")
         browserFuture = MediaBrowser.Builder(context, sessionToken).buildAsync()
         browserFuture?.addListener({
-            mediaBrowser = browserFuture?.get()
-            mediaBrowser?.addListener(playerListener)
-            
-            mediaBrowser?.let {
-                _shuffleModeEnabled.value = it.shuffleModeEnabled
-                _repeatMode.value = it.repeatMode
+            try {
+                mediaBrowser = browserFuture?.get()
+                android.util.Log.d("MusicController", "MediaBrowser CONNECTED for instance: $instanceId")
+                mediaBrowser?.addListener(playerListener)
                 
-                // Attempt to restore session
-                restoreLastSession()
+                mediaBrowser?.let {
+                    _shuffleModeEnabled.value = it.shuffleModeEnabled
+                    _repeatMode.value = it.repeatMode
+                    
+                    // CRITICAL GUARD: Only restore session if nothing is currently playing/loaded
+                    if (it.mediaItemCount == 0) {
+                        android.util.Log.d("MusicController", "Restoring last session for instance: $instanceId")
+                        restoreLastSession()
+                    } else {
+                        android.util.Log.d("MusicController", "Session already active, skipping restore for instance: $instanceId")
+                        // Synchronize local state with existing session
+                        _currentSong.value = it.currentMediaItem?.let { item -> 
+                            currentPlaylist.find { s -> s.id.toString() == item.mediaId }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("MusicController", "MediaBrowser connection failed for instance: $instanceId", e)
             }
         }, ContextCompat.getMainExecutor(context))
     }
@@ -230,6 +247,7 @@ class MusicController @Inject constructor(
     }
 
     fun destroy() {
+        android.util.Log.d("MusicController", "Destroying MusicController instance: $instanceId")
         cancelSleepTimer()
         browserFuture?.let {
             MediaBrowser.releaseFuture(it)

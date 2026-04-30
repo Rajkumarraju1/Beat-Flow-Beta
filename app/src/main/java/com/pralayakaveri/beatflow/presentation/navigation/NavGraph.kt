@@ -40,7 +40,8 @@ fun NavGraph(
                 onNavigateBack = { navController.popBackStack() },
                 onPlaySong = { song ->
                     mainViewModel.playSongs(listOf(song), 0)
-                }
+                },
+                mainViewModel = mainViewModel
             )
         }
         composable("insights") {
