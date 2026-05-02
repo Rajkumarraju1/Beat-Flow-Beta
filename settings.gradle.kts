@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "BeatFlow"
+rootProject.name = "OrbitMusic"
 include(":app")

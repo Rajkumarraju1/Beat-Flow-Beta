@@ -7,15 +7,16 @@ plugins {
 }
 
 android {
-    namespace = "com.pralayakaveri.beatflow"
+    namespace = "com.pralayakaveri.orbitmusic"
     compileSdk = 35
 
     defaultConfig {
+        versionCode = 26
+        versionName = "v1.0.0-rc11"
         applicationId = "com.pralayakaveri.orbitmusic"
         minSdk = 24
         targetSdk = 35
-        versionCode = 14
-        versionName = "v1.0.0-rc2.3"
+
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -23,9 +24,19 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("C:/Users/Lenovo/OneDrive/Documents/Beat-Flow/beatflow_release.jks")
+            storePassword = System.getenv("BEATFLOW_STORE_PASSWORD")
+            keyAlias = System.getenv("BEATFLOW_KEY_ALIAS")
+            keyPassword = System.getenv("BEATFLOW_KEY_PASSWORD")
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
