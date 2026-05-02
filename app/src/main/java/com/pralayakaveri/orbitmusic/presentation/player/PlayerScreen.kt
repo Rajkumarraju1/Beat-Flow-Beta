@@ -172,7 +172,7 @@ fun PlayerScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(top = 25.dp, bottom = 3.dp),
+                    .statusBarsPadding(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 // Top Bar
@@ -934,6 +934,7 @@ fun PlayerScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(0.92f)
+                        .navigationBarsPadding()
                         .height(72.dp)
                         .shadow(elevation = 12.dp, shape = RoundedCornerShape(percent = 50), spotColor = Color.Black)
                         .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(percent = 50))

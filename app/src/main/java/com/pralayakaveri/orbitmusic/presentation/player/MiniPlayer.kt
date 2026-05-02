@@ -29,6 +29,7 @@ import com.pralayakaveri.orbitmusic.domain.util.cleanSongTitle
 
 @Composable
 fun MiniPlayer(
+    modifier: Modifier = Modifier,
     song: Song,
     customArtworkUri: String? = null,
     isPlaying: Boolean,
@@ -43,7 +44,7 @@ fun MiniPlayer(
     val progress = if (song.duration > 0) currentPosition.toFloat() / song.duration else 0f
 
     Card(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .pointerInput(Unit) {

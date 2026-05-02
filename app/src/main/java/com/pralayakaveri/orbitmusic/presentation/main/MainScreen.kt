@@ -2,7 +2,10 @@ package com.pralayakaveri.orbitmusic.presentation.main
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ModalBottomSheet
@@ -22,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.compose.ui.layout.onGloballyPositioned
 import com.pralayakaveri.orbitmusic.presentation.navigation.NavGraph
 import com.pralayakaveri.orbitmusic.presentation.player.MiniPlayer
 import com.pralayakaveri.orbitmusic.presentation.player.PlayerScreen
@@ -44,6 +48,9 @@ fun MainScreen(
     val showMiniPlayer = currentSong != null && currentRoute != "galaxy"
 
     val snackbarHostState = remember { SnackbarHostState() }
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    var miniPlayerHeightPx by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    val miniPlayerHeightDp = remember(miniPlayerHeightPx) { with(density) { miniPlayerHeightPx.toDp() } }
 
     LaunchedEffect(Unit) {
         mainViewModel.errorEvents.collect { message ->
@@ -59,33 +66,45 @@ fun MainScreen(
     }
 
     Scaffold(
-        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        bottomBar = {
-            if (showMiniPlayer) {
-                MiniPlayer(
-                    song = currentSong!!,
-                    customArtworkUri = customArtworks[currentSong!!.id],
-                    isPlaying = isPlaying,
-                    currentPosition = currentPosition,
-                    onPlayPause = { mainViewModel.togglePlayPause() },
-                    onExpand = { showPlayerSheet = true },
-                    onNext = { mainViewModel.skipToNext() },
-                    onPrevious = { mainViewModel.skipToPrevious() },
-                    enabled = showMiniPlayer
+        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets.systemBars,
+        snackbarHost = { SnackbarHost(snackbarHostState) }
+    ) { paddingValues ->
+        Box(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .padding(bottom = if (showMiniPlayer) miniPlayerHeightDp else 0.dp)
+            ) {
+                NavGraph(
+                    navController = navController,
+                    mainViewModel = mainViewModel
                 )
             }
-        }
-    ) { paddingValues ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(bottom = if (showMiniPlayer) paddingValues.calculateBottomPadding() else 0.dp)
-        ) {
-            NavGraph(
-                navController = navController,
-                mainViewModel = mainViewModel
-            )
+            
+            if (showMiniPlayer) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(androidx.compose.ui.Alignment.BottomCenter)
+                        .navigationBarsPadding()
+                ) {
+                    MiniPlayer(
+                        modifier = Modifier.onGloballyPositioned { coordinates ->
+                            miniPlayerHeightPx = coordinates.size.height
+                        },
+                        song = currentSong!!,
+                        customArtworkUri = customArtworks[currentSong!!.id],
+                        isPlaying = isPlaying,
+                        currentPosition = currentPosition,
+                        onPlayPause = { mainViewModel.togglePlayPause() },
+                        onExpand = { showPlayerSheet = true },
+                        onNext = { mainViewModel.skipToNext() },
+                        onPrevious = { mainViewModel.skipToPrevious() },
+                        enabled = showMiniPlayer
+                    )
+                }
+            }
         }
     }
 
@@ -93,6 +112,7 @@ fun MainScreen(
             ModalBottomSheet(
                 onDismissRequest = { showPlayerSheet = false },
                 sheetState = sheetState,
+                contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0),
                 dragHandle = null,
                 containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface,
                 scrimColor = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.5f),
