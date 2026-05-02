@@ -45,6 +45,10 @@ import androidx.compose.foundation.pager.rememberPagerState
 import com.pralayakaveri.orbitmusic.presentation.components.SkeletonSongItem
 import com.pralayakaveri.orbitmusic.presentation.components.MusicVisualizerIcon
 import com.pralayakaveri.orbitmusic.presentation.components.SongItem
+import com.pralayakaveri.orbitmusic.presentation.components.ListScrollResetHandler
+import com.pralayakaveri.orbitmusic.presentation.components.GridScrollResetHandler
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -90,6 +94,17 @@ fun HomeScreen(
     val tabs = listOf("Songs", "Playlists", "Albums", "Artists", "Folders", "Favorites")
     val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { tabs.size })
     val selectedTabIndex = pagerState.currentPage
+
+    // Scroll States
+    val songsListState = rememberLazyListState()
+    val playlistsListState = rememberLazyListState()
+    val albumsGridState = rememberLazyGridState()
+    val artistsGridState = rememberLazyGridState()
+    val foldersListState = rememberLazyListState()
+    val favoritesListState = rememberLazyListState()
+
+    // Scroll Reset Signals (Unified in MainViewModel)
+    val scrollResetSignal by mainViewModel.scrollResetSignal.collectAsState()
 
     var isHeaderVisible by androidx.compose.runtime.remember {
         androidx.compose.runtime.mutableStateOf(
@@ -331,7 +346,10 @@ fun HomeScreen(
                                             label = label,
                                             isSelected = currentSortOrder == order,
                                             onClick = {
-                                                viewModel.setSortOrder(order)
+                                                if (currentSortOrder != order) {
+                                                    viewModel.setSortOrder(order)
+                                                    mainViewModel.emitScrollReset(com.pralayakaveri.orbitmusic.presentation.util.ScrollResetSignal.Reason.SORT)
+                                                }
                                                 showSortSheet = false
                                             }
                                         )
@@ -420,12 +438,18 @@ fun HomeScreen(
                             ) { pageIndex ->
                                 when (pageIndex) {
                                     0 -> {
+                                        if (pagerState.settledPage == pageIndex) {
+                                            ListScrollResetHandler(songsListState, songs.size, scrollResetSignal)
+                                        }
                                         if (isLoading) {
                                             LazyColumn(modifier = Modifier.fillMaxSize()) {
                                                 items(10) { SkeletonSongItem() }
                                             }
                                         } else {
-                                            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                                            LazyColumn(
+                                                modifier = Modifier.fillMaxSize(),
+                                                state = songsListState
+                                            ) {
                                                 itemsIndexed(
                                                     songs,
                                                     key = { _, song -> song.id }) { index, song ->
@@ -447,6 +471,7 @@ fun HomeScreen(
                                     1 -> {
                                         LazyColumn(
                                             modifier = Modifier.fillMaxSize(),
+                                            state = playlistsListState,
                                             contentPadding = PaddingValues(vertical = 16.dp)
                                         ) {
                                             item {
@@ -496,11 +521,15 @@ fun HomeScreen(
                                     }
 
                                     2 -> {
+                                        if (pagerState.settledPage == pageIndex) {
+                                            GridScrollResetHandler(albumsGridState, albums.size, scrollResetSignal)
+                                        }
                                         androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
                                             columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(
                                                 2
                                             ),
                                             modifier = Modifier.fillMaxSize(),
+                                            state = albumsGridState,
                                             contentPadding = PaddingValues(8.dp)
                                         ) {
                                             items(
@@ -522,12 +551,16 @@ fun HomeScreen(
                                     }
 
                                     3 -> {
+                                        if (pagerState.settledPage == pageIndex) {
+                                            GridScrollResetHandler(artistsGridState, artists.size, scrollResetSignal)
+                                        }
                                         val artistImages by mainViewModel.artistImages.collectAsState()
                                         androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
                                             columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(
                                                 2
                                             ),
                                             modifier = Modifier.fillMaxSize(),
+                                            state = artistsGridState,
                                             contentPadding = PaddingValues(8.dp)
                                         ) {
                                             items(
@@ -551,7 +584,13 @@ fun HomeScreen(
                                     }
 
                                     4 -> {
-                                        LazyColumn(modifier = Modifier.fillMaxSize()) {
+                                        if (pagerState.settledPage == pageIndex) {
+                                            ListScrollResetHandler(foldersListState, folders.keys.size, scrollResetSignal)
+                                        }
+                                        LazyColumn(
+                                            modifier = Modifier.fillMaxSize(),
+                                            state = foldersListState
+                                        ) {
                                             itemsIndexed(
                                                 folders.keys.toList(),
                                                 key = { _, folderPath -> folderPath }) { _, folderPath ->
@@ -574,6 +613,9 @@ fun HomeScreen(
                                     }
 
                                     5 -> {
+                                        if (pagerState.settledPage == pageIndex) {
+                                            ListScrollResetHandler(favoritesListState, favorites.size, scrollResetSignal)
+                                        }
                                         if (favorites.isEmpty()) {
                                             Box(
                                                 modifier = Modifier.fillMaxSize(),
@@ -585,7 +627,10 @@ fun HomeScreen(
                                                 )
                                             }
                                         } else {
-                                            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                                            LazyColumn(
+                                                modifier = Modifier.fillMaxSize(),
+                                                state = favoritesListState
+                                            ) {
                                                 itemsIndexed(
                                                     favorites,
                                                     key = { _, song -> song.id }) { index, song ->

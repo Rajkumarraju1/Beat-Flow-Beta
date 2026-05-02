@@ -19,6 +19,7 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.security.MessageDigest
 import javax.inject.Inject
+import com.pralayakaveri.orbitmusic.presentation.util.ScrollResetSignal
 
 @HiltViewModel
 class MainViewModel @Inject constructor(
@@ -39,6 +40,9 @@ class MainViewModel @Inject constructor(
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+    private val _scrollResetSignal = MutableStateFlow<ScrollResetSignal?>(null)
+    val scrollResetSignal: StateFlow<ScrollResetSignal?> = _scrollResetSignal.asStateFlow()
 
     private val _lyricsMap = MutableStateFlow<Map<Long, List<LyricLine>>>(emptyMap())
     val lyricsMap: StateFlow<Map<Long, List<LyricLine>>> = _lyricsMap.asStateFlow()
@@ -113,6 +117,18 @@ class MainViewModel @Inject constructor(
                 handleSongChange(song)
             }
         }
+        
+        // Debounced search scroll reset
+        viewModelScope.launch {
+            searchQuery
+                .debounce(400)
+                .distinctUntilChanged()
+                .drop(1) // Skip initial empty value
+                .collect {
+                    emitScrollReset(ScrollResetSignal.Reason.SEARCH)
+                }
+        }
+
         viewModelScope.launch {
             indexingState.collect { state ->
                 if (state == com.pralayakaveri.orbitmusic.domain.engine.IndexingState.ERROR) {
@@ -327,6 +343,10 @@ class MainViewModel @Inject constructor(
     fun lockUiPlayback(locked: Boolean) = musicController.setUiLocked(locked)
     fun invalidateSongCache() = musicRepository.invalidateSongCache()
     fun startInitialSync() = viewModelScope.launch { musicRepository.startSync(com.pralayakaveri.orbitmusic.domain.engine.TriggerReason.INITIAL_SCAN) }
+
+    fun emitScrollReset(reason: ScrollResetSignal.Reason) {
+        _scrollResetSignal.value = ScrollResetSignal(reason = reason)
+    }
 
     fun playSongs(songs: List<Song>, startIndex: Int = 0) = musicController.playSongs(songs, startIndex)
     fun saveLyrics(song: Song, content: String) {

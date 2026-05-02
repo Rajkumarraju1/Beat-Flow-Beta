@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import com.pralayakaveri.orbitmusic.presentation.util.ScrollResetSignal
 import javax.inject.Inject
 
 @HiltViewModel
@@ -41,7 +42,9 @@ class HomeViewModel @Inject constructor(
 
     fun setSortOrder(order: com.pralayakaveri.orbitmusic.domain.model.SortOrder) {
         viewModelScope.launch {
-            musicRepository.setSortOrder(order)
+            if (sortOrder.value != order) {
+                musicRepository.setSortOrder(order)
+            }
         }
     }
 
