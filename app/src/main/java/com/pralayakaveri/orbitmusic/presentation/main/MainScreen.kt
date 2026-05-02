@@ -112,7 +112,7 @@ fun MainScreen(
             ModalBottomSheet(
                 onDismissRequest = { showPlayerSheet = false },
                 sheetState = sheetState,
-                contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0),
+                contentWindowInsets = { androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0) },
                 dragHandle = null,
                 containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface,
                 scrimColor = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.5f),
