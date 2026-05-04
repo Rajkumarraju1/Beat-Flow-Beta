@@ -10,7 +10,14 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.content.ContextCompat
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import kotlin.random.Random
 import com.pralayakaveri.orbitmusic.domain.util.cleanSongTitle
@@ -19,7 +26,7 @@ data class GalaxyNode(
     val id: String,
     val label: String,
     val type: NodeType,
-    var position: Offset, // Base position (anchor)
+    val position: Offset, // Base position (anchor)
     val color: Color,
     val songCount: Int = 0,
     val song: Song? = null,
@@ -36,45 +43,73 @@ enum class NodeType {
     GENRE, ARTIST, SONG
 }
 
+sealed interface GalaxyUiState {
+    object Loading : GalaxyUiState
+    object Empty : GalaxyUiState
+    data class Success(val nodes: List<GalaxyNode>) : GalaxyUiState
+}
+
 @HiltViewModel
 class GalaxyViewModel @Inject constructor(
-    private val musicRepository: MusicRepository
+    private val musicRepository: MusicRepository,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
 
-    private val _nodes = MutableStateFlow<List<GalaxyNode>>(emptyList())
-    val nodes: StateFlow<List<GalaxyNode>> = _nodes.asStateFlow()
+    private fun hasPermission(): Boolean {
+        val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            Manifest.permission.READ_MEDIA_AUDIO
+        } else {
+            Manifest.permission.READ_EXTERNAL_STORAGE
+        }
+        return ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+    }
 
-    private val _zoomLevel = MutableStateFlow(1f)
-    val zoomLevel: StateFlow<Float> = _zoomLevel.asStateFlow()
-
-    private val _isLoading = MutableStateFlow(true)
-    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+    private val _uiState = MutableStateFlow<GalaxyUiState>(GalaxyUiState.Loading)
+    val uiState: StateFlow<GalaxyUiState> = _uiState.asStateFlow()
 
     private val _initialFocusOffset = MutableStateFlow(Offset.Zero)
     val initialFocusOffset: StateFlow<Offset> = _initialFocusOffset.asStateFlow()
 
     init {
-        loadGalaxy()
+        // Triggered by UI after permission gate
     }
 
-    private fun loadGalaxy() {
+    private var isLoaded = false
+
+    fun loadGalaxy() {
+        if (isLoaded || !hasPermission()) return
+        
+        android.util.Log.d("GALAXY_PERF", "Data Load START")
+        
         viewModelScope.launch {
-            musicRepository.getAllSongs().collect { songs ->
-                _isLoading.value = true
-                val limitedSongs = songs.take(1000)
+            isLoaded = true
+            try {
+                // Fetch data on IO
+                val songs = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    musicRepository.getAllSongs().first()
+                }
                 
+                if (songs.isEmpty()) {
+                    _uiState.value = GalaxyUiState.Empty
+                    return@launch
+                }
+
+                // Process nodes on Default
                 val genreNodes = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-                    val genreGroups = limitedSongs.groupBy { it.genre ?: "Interstellar Void" }
+                    val limitedSongs = songs.take(1000)
+                    val genreGroups = limitedSongs.groupBy { it.genre ?: "Uncharted Signals" }
                     genreGroups.entries.mapIndexed { gIndex, (genre, genreSongs) ->
                         val artistGroups = genreSongs.groupBy { it.artist }
                         
                         val artistNodes = artistGroups.entries.mapIndexed { aIndex, (artist, artistSongs) ->
-                            val songNodes = if (artistSongs.size < 50) { 
-                                artistSongs.mapIndexed { sIndex, song ->
-                                    val ringIndex = sIndex / 5
-                                    val orbitRadius = 80f + ringIndex * 40f
-                                    val speed = 0.5f / (ringIndex + 1f)
+                            val songNodes = artistSongs.take(50).mapIndexed { sIndex, song ->
+                                    val ringIndex = sIndex / 6
+                                    val orbitRadius = 115f + ringIndex * 60f
+                                    val speed = (0.4f - ringIndex * 0.05f).coerceAtLeast(0.1f)
                                     val direction = if (ringIndex % 2 == 0) 1 else -1
+                                    
+                                    val songsInRing = minOf(6, artistSongs.size - (ringIndex * 6))
+                                    val angleOffset = ((2f * kotlin.math.PI.toFloat() * (sIndex % 6)) / songsInRing) + (ringIndex * 0.3f)
                                     
                                     GalaxyNode(
                                         id = song.id.toString(),
@@ -86,10 +121,9 @@ class GalaxyViewModel @Inject constructor(
                                         orbitRadius = orbitRadius,
                                         orbitSpeed = speed,
                                         orbitDirection = direction,
-                                        initialAngle = Random.nextFloat() * 2f * kotlin.math.PI.toFloat()
+                                        initialAngle = angleOffset
                                     )
                                 }
-                            } else emptyList()
 
                             GalaxyNode(
                                 id = "artist_$artist",
@@ -113,35 +147,22 @@ class GalaxyViewModel @Inject constructor(
                     }
                 }
 
-                _nodes.value = genreNodes
                 if (genreNodes.isNotEmpty()) {
-                    val midPoint = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-                        var minX = Float.MAX_VALUE
-                        var maxX = Float.MIN_VALUE
-                        var minY = Float.MAX_VALUE
-                        var maxY = Float.MIN_VALUE
-                        
-                        genreNodes.forEach {
-                            minX = minOf(minX, it.position.x)
-                            maxX = maxOf(maxX, it.position.x)
-                            minY = minOf(minY, it.position.y)
-                            maxY = maxOf(maxY, it.position.y)
-                        }
-                        
-                        Offset(-(minX + maxX) / 2f, -(minY + maxY) / 2f)
-                    }
-                    _initialFocusOffset.value = midPoint
+                    _initialFocusOffset.value = Offset.Zero
+                    _uiState.value = GalaxyUiState.Success(genreNodes)
+                } else {
+                    _uiState.value = GalaxyUiState.Empty
                 }
-                _isLoading.value = false
+            } catch (e: Exception) {
+                _uiState.value = GalaxyUiState.Empty
             }
         }
     }
 
     private fun getSpiralOffset(index: Int, scale: Float): Offset {
-        // Reduced initial radius to avoid a large "black hole" at the center
         val angle = index * 0.7f 
-        val initialRadius = 150f 
-        val radius = initialRadius + (scale * 1.5f) * kotlin.math.sqrt(index.toFloat() + 1f)
+        val initialRadius = 0f 
+        val radius = initialRadius + (scale * 1.5f) * kotlin.math.sqrt(index.toFloat())
         
         return Offset(
             radius * kotlin.math.cos(angle.toDouble()).toFloat(),

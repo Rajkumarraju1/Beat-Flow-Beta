@@ -180,18 +180,20 @@ fun PlayerScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .statusBarsPadding()
             ) {
                 // Main Content Area
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(bottom = 96.dp),
+                        .padding(bottom = 120.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     // Top Bar
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .statusBarsPadding()
+                            .padding(horizontal = 24.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -704,6 +706,25 @@ fun PlayerScreen(
                                 }
                         ) {
                             AsyncImage(model = displayUri, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                            
+                            // Edit Icon Overlay
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(16.dp)
+                                    .size(36.dp)
+                                    .background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                                    .border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape)
+                                    .clickable { showArtworkMenu = true },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = "Edit Artwork",
+                                    tint = Color.White.copy(alpha = 0.8f),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                         }
                     }
 
@@ -799,7 +820,8 @@ fun PlayerScreen(
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .fillMaxWidth(0.92f)
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
                         .padding(bottom = 16.dp)
                         .windowInsetsPadding(androidx.compose.foundation.layout.WindowInsets.navigationBars.only(androidx.compose.foundation.layout.WindowInsetsSides.Bottom))
                         .height(56.dp)

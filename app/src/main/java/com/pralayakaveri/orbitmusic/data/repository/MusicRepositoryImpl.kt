@@ -17,6 +17,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import javax.inject.Inject
@@ -46,18 +48,29 @@ class MusicRepositoryImpl @Inject constructor(
     override suspend fun getSongs(): List<Song> = withContext(Dispatchers.IO) {
         if (cachedSongs.isNotEmpty()) return@withContext cachedSongs
         
+        val filters = filterPreferencesManager.filterFlow.first()
         val songs = when (indexingEngine.mode) {
             IndexingMode.LEGACY, IndexingMode.SHADOW -> {
-                mediaStoreProvider.getAllSongs()
+                mediaStoreProvider.getAllSongs(
+                    filters.minDurationMs,
+                    filters.minSizeBytes,
+                    filters.minDurationEnabled,
+                    filters.minSizeEnabled
+                )
             }
             IndexingMode.ACTIVE -> {
                 val songsWithIndex = librarySongDao.getAllSongsWithIndexSingle()
                 if (songsWithIndex.isEmpty()) {
-                    // Fallback to MediaStore if DB is empty. 
-                    // NO automatic sync trigger here to avoid duplicates.
-                    mediaStoreProvider.getAllSongs()
+                    mediaStoreProvider.getAllSongs(
+                        filters.minDurationMs,
+                        filters.minSizeBytes,
+                        filters.minDurationEnabled,
+                        filters.minSizeEnabled
+                    )
                 } else {
-                    songsWithIndex.map { it.toDomain() }
+                    songsWithIndex.map { it.toDomain() }.filter { song ->
+                        shouldIncludeTrackInMemory(song, filters)
+                    }
                 }
             }
         }
@@ -160,32 +173,54 @@ class MusicRepositoryImpl @Inject constructor(
     }
 
     override suspend fun getRecentlyAddedSongs(limit: Int): List<Song> {
-        return mediaStoreProvider.getRecentlyAddedSongs(limit)
+        val filters = filterPreferencesManager.filterFlow.first()
+        return mediaStoreProvider.getRecentlyAddedSongs(
+            limit,
+            filters.minDurationMs,
+            filters.minSizeBytes,
+            filters.minDurationEnabled,
+            filters.minSizeEnabled
+        )
     }
 
     override fun getAllSongs(): Flow<List<Song>> {
-        val songsFlow = when (indexingEngine.mode) {
-            IndexingMode.LEGACY, IndexingMode.SHADOW -> mediaStoreProvider.getAllSongsFlow()
-            IndexingMode.ACTIVE -> librarySongDao.getAllSongs().map { entities ->
-                entities.map { it.toDomain() }
-            }
-        }
-
-        return combine(
-            songsFlow,
-            libraryPreferencesManager.sortOrderFlow,
-            playCountDao.getAllPlayCountsFlow()
-        ) { songs, sortOrder, playCounts ->
-            when (sortOrder) {
-                SortOrder.TITLE -> songs.sortedBy { it.title.lowercase() }
-                SortOrder.ARTIST -> songs.sortedBy { it.artist.lowercase() }
-                SortOrder.RECENTLY_ADDED -> songs.sortedByDescending { it.id }
-                SortOrder.MOST_PLAYED -> {
-                    val countMap = playCounts.associate { it.songId to it.playCount }
-                    songs.sortedByDescending { countMap[it.id] ?: 0 }
+        return filterPreferencesManager.filterFlow
+            .distinctUntilChanged()
+            .flatMapLatest { filters ->
+                val songsFlow = when (indexingEngine.mode) {
+                    IndexingMode.LEGACY, IndexingMode.SHADOW -> {
+                        flow {
+                            emit(mediaStoreProvider.getAllSongs(
+                                filters.minDurationMs,
+                                filters.minSizeBytes,
+                                filters.minDurationEnabled,
+                                filters.minSizeEnabled
+                            ))
+                        }
+                    }
+                    IndexingMode.ACTIVE -> librarySongDao.getAllSongs().map { entities ->
+                        entities.map { it.toDomain() }.filter { song ->
+                            shouldIncludeTrackInMemory(song, filters)
+                        }
+                    }
+                }
+                
+                combine(
+                    songsFlow,
+                    libraryPreferencesManager.sortOrderFlow,
+                    playCountDao.getAllPlayCountsFlow()
+                ) { songs, sortOrder, playCounts ->
+                    when (sortOrder) {
+                        SortOrder.TITLE -> songs.sortedBy { it.title.lowercase() }
+                        SortOrder.ARTIST -> songs.sortedBy { it.artist.lowercase() }
+                        SortOrder.RECENTLY_ADDED -> songs.sortedByDescending { it.id }
+                        SortOrder.MOST_PLAYED -> {
+                            val countMap = playCounts.associate { it.songId to it.playCount }
+                            songs.sortedByDescending { countMap[it.id] ?: 0 }
+                        }
+                    }
                 }
             }
-        }
     }
 
     override suspend fun getForgottenSongs(limit: Int): List<Song> {
@@ -345,5 +380,11 @@ class MusicRepositoryImpl @Inject constructor(
             uri = Uri.parse(uriString),
             albumArtUri = albumArtUriString?.let { Uri.parse(it) }
         )
+    }
+
+    private fun shouldIncludeTrackInMemory(song: Song, filters: com.pralayakaveri.orbitmusic.domain.util.FilterPreferences): Boolean {
+        val duration = song.duration ?: 0L
+        if (filters.minDurationEnabled && duration < filters.minDurationMs) return false
+        return true
     }
 }

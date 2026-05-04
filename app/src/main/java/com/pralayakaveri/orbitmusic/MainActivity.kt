@@ -21,30 +21,19 @@ class MainActivity : ComponentActivity() {
 
     private val mainViewModel: MainViewModel by viewModels()
 
-    private val permissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        val storageGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            permissions[Manifest.permission.READ_MEDIA_AUDIO] == true
-        } else {
-            permissions[Manifest.permission.READ_EXTERNAL_STORAGE] == true
-        }
-        
-        if (storageGranted) {
-            mainViewModel.startInitialSync()
-        }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         android.util.Log.d("MainActivity", "MainActivity onCreate")
         super.onCreate(savedInstanceState)
         
-        requestStoragePermissions()
-
         // Handle Edge-to-Edge
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = android.graphics.Color.TRANSPARENT
         window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+            window.isStatusBarContrastEnforced = false
+        }
 
         setContent {
             val currentTheme by mainViewModel.currentTheme.collectAsState()
@@ -91,7 +80,12 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    com.pralayakaveri.orbitmusic.presentation.main.MainScreen(mainViewModel = mainViewModel)
+                    com.pralayakaveri.orbitmusic.presentation.main.MainScreen(
+                        mainViewModel = mainViewModel,
+                        onPermissionGranted = {
+                            mainViewModel.startInitialSync()
+                        }
+                    )
                 }
             }
         }
@@ -110,16 +104,5 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         android.util.Log.d("MainActivity", "MainActivity onDestroy")
         super.onDestroy()
-    }
-
-    private fun requestStoragePermissions() {
-        val permissions = mutableListOf<String>()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            permissions.add(Manifest.permission.READ_MEDIA_AUDIO)
-        } else {
-            permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
-        }
-        permissions.add(Manifest.permission.RECORD_AUDIO)
-        permissionLauncher.launch(permissions.toTypedArray())
     }
 }

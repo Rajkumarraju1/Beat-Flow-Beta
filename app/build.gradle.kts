@@ -11,8 +11,8 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        versionCode = 26
-        versionName = "v1.0.0-rc11"
+        versionCode = 27
+        versionName = "v1.0.0-rc12"
         applicationId = "com.pralayakaveri.orbitmusic"
         minSdk = 24
         targetSdk = 35
@@ -52,6 +52,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     packaging {
         resources {

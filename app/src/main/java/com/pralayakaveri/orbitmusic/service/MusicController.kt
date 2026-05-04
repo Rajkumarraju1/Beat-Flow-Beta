@@ -8,6 +8,7 @@ import androidx.media3.common.Player
 import androidx.media3.session.MediaBrowser
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
+import android.widget.Toast
 import com.pralayakaveri.orbitmusic.domain.model.Song
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,6 +25,14 @@ class MusicController @Inject constructor(
     private val musicRepository: com.pralayakaveri.orbitmusic.domain.repository.MusicRepository,
     private val sessionManager: com.pralayakaveri.orbitmusic.domain.util.PlaybackSessionManager
 ) {
+    private fun hasPermission(): Boolean {
+        val permission = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            android.Manifest.permission.READ_MEDIA_AUDIO
+        } else {
+            android.Manifest.permission.READ_EXTERNAL_STORAGE
+        }
+        return androidx.core.content.ContextCompat.checkSelfPermission(context, permission) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    }
     private val instanceId = java.util.UUID.randomUUID().toString().substring(0, 8)
     
     companion object {
@@ -152,6 +161,7 @@ class MusicController @Inject constructor(
     }
 
     private fun restoreLastSession() {
+        if (!hasPermission()) return
         controllerScope.launch {
             val session: com.pralayakaveri.orbitmusic.domain.util.PlaybackSession = sessionManager.sessionFlow.first()
             val lastId: Long? = session.lastSongId
@@ -218,6 +228,10 @@ class MusicController @Inject constructor(
     }
 
     fun playSongs(songs: List<Song>, startIndex: Int = 0) {
+        if (!hasPermission()) {
+            Toast.makeText(context, "Storage permission required to play music", Toast.LENGTH_SHORT).show()
+            return
+        }
         // Log removed
         currentPlaylist = songs
         mediaBrowser?.let { browser ->
@@ -239,6 +253,10 @@ class MusicController @Inject constructor(
     private var lastToggleTime = 0L
 
     fun togglePlayPause() {
+        if (!hasPermission()) {
+            Toast.makeText(context, "Storage permission required to play music", Toast.LENGTH_SHORT).show()
+            return
+        }
         if (isUiLocked) {
             android.util.Log.w("MusicController", "Ignoring togglePlayPause: UI is LOCKED")
             return

@@ -33,7 +33,7 @@ class FilterPreferencesManager @Inject constructor(
     val filterFlow: Flow<FilterPreferences> = context.filterDataStore.data.map { prefs ->
         FilterPreferences(
             minDurationEnabled = prefs[Keys.MIN_DURATION_ENABLED] ?: true,
-            minDurationMs = prefs[Keys.MIN_DURATION_MS] ?: 30000L,
+            minDurationMs = (prefs[Keys.MIN_DURATION_MS] ?: 60000L).let { if (it == 30000L) 60000L else it },
             minSizeEnabled = prefs[Keys.MIN_SIZE_ENABLED] ?: true,
             minSizeBytes = prefs[Keys.MIN_SIZE_BYTES] ?: 102400L
         )

@@ -1,23 +1,31 @@
 package com.pralayakaveri.orbitmusic.data.provider
 
+import android.Manifest
 import android.content.ContentUris
 import android.content.Context
+import android.content.pm.PackageManager
 import android.database.Cursor
 import android.net.Uri
+import android.os.Build
 import android.provider.MediaStore
+import androidx.core.content.ContextCompat
 import com.pralayakaveri.orbitmusic.domain.model.Song
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 
 class MediaStoreProvider @Inject constructor(
-    @ApplicationContext private val context: Context,
-    private val filterPreferencesManager: com.pralayakaveri.orbitmusic.domain.util.FilterPreferencesManager
+    @ApplicationContext private val context: Context
 ) {
+
+    private fun hasPermission(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_AUDIO) == PackageManager.PERMISSION_GRANTED
+        } else {
+            ContextCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+        }
+    }
 
     data class MediaStoreHeadless(
         val id: Long,
@@ -26,9 +34,17 @@ class MediaStoreProvider @Inject constructor(
         val dateModified: Long
     )
 
-    suspend fun getHeadlessSongs(): List<MediaStoreHeadless> = withContext(Dispatchers.IO) {
+    suspend fun getHeadlessSongs(
+        minDur: Long,
+        minSize: Long,
+        durEnabled: Boolean,
+        sizeEnabled: Boolean
+    ): List<MediaStoreHeadless> = withContext(Dispatchers.IO) {
+        if (!hasPermission()) {
+            android.util.Log.w("MediaStoreProvider", "getHeadlessSongs: Missing permissions")
+            return@withContext emptyList()
+        }
         val result = mutableListOf<MediaStoreHeadless>()
-        val filters = filterPreferencesManager.filterFlow.first()
         
         val collection = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
             MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
@@ -60,11 +76,10 @@ class MediaStoreProvider @Inject constructor(
             val durationCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
 
             while (cursor.moveToNext()) {
-                val size = cursor.getLong(sizeCol)
                 val duration = cursor.getLong(durationCol)
+                val size = cursor.getLong(sizeCol)
                 
-                if (filters.minSizeEnabled && size < filters.minSizeBytes) continue
-                if (filters.minDurationEnabled && duration < filters.minDurationMs) continue
+                if (!shouldIncludeTrack(duration, size, minDur, minSize, durEnabled, sizeEnabled)) continue
 
                 result.add(
                     MediaStoreHeadless(
@@ -79,9 +94,17 @@ class MediaStoreProvider @Inject constructor(
         result
     }
 
-    suspend fun getAllSongs(): List<Song> = withContext(Dispatchers.IO) {
+    suspend fun getAllSongs(
+        minDur: Long,
+        minSize: Long,
+        durEnabled: Boolean,
+        sizeEnabled: Boolean
+    ): List<Song> = withContext(Dispatchers.IO) {
+        if (!hasPermission()) {
+            android.util.Log.w("MediaStoreProvider", "getAllSongs: Missing permissions")
+            return@withContext emptyList()
+        }
         val songs = mutableListOf<Song>()
-        val filters = filterPreferencesManager.filterFlow.first()
         
         val collection = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
             MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
@@ -99,19 +122,26 @@ class MediaStoreProvider @Inject constructor(
             MediaStore.Audio.Media.DURATION,
             MediaStore.Audio.Media.DATA,
             MediaStore.Audio.Media.TRACK,
-            MediaStore.Audio.Media.SIZE
+            MediaStore.Audio.Media.SIZE,
+            MediaStore.Audio.Media.IS_MUSIC
         )
 
-        val sortOrder = "${MediaStore.Audio.Media.TITLE} ASC"
         val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
+        val sortOrderLegacy = "${MediaStore.Audio.Media.TITLE} ASC"
 
-        context.contentResolver.query(
-            collection,
-            projection,
-            selection,
-            null,
-            sortOrder
-        )?.use { cursor ->
+        val cursor = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            android.util.Log.e("MediaStoreProvider", "getAllSongs: Executing MODERN path (API 26+) on Version: ${com.pralayakaveri.orbitmusic.BuildConfig.VERSION_CODE}")
+            val queryArgs = android.os.Bundle().apply {
+                putStringArray(android.content.ContentResolver.QUERY_ARG_SORT_COLUMNS, arrayOf(MediaStore.Audio.Media.TITLE))
+                putInt(android.content.ContentResolver.QUERY_ARG_SORT_DIRECTION, android.content.ContentResolver.QUERY_SORT_DIRECTION_ASCENDING)
+            }
+            context.contentResolver.query(collection, projection, queryArgs, null)
+        } else {
+            android.util.Log.e("MediaStoreProvider", "getAllSongs: Executing LEGACY path (API < 26) on Version: ${com.pralayakaveri.orbitmusic.BuildConfig.VERSION_CODE}")
+            context.contentResolver.query(collection, projection, selection, null, sortOrderLegacy)
+        }
+
+        cursor?.use { cursor ->
             val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
             val titleColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
             val artistColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
@@ -122,13 +152,15 @@ class MediaStoreProvider @Inject constructor(
             val dataColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)
             val trackColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TRACK)
             val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.SIZE)
+            val isMusicColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.IS_MUSIC)
 
             while (cursor.moveToNext()) {
-                val size = cursor.getLong(sizeColumn)
+                if (cursor.getInt(isMusicColumn) == 0) continue
+
                 val duration = cursor.getLong(durationColumn)
+                val size = cursor.getLong(sizeColumn)
                 
-                if (filters.minSizeEnabled && size < filters.minSizeBytes) continue
-                if (filters.minDurationEnabled && duration < filters.minDurationMs) continue
+                if (!shouldIncludeTrack(duration, size, minDur, minSize, durEnabled, sizeEnabled)) continue
 
                 val id = cursor.getLong(idColumn)
                 val title = cursor.getString(titleColumn) ?: "Cosmic Signal"
@@ -165,7 +197,17 @@ class MediaStoreProvider @Inject constructor(
         songs
     }
 
-    suspend fun getRecentlyAddedSongs(limit: Int): List<Song> = withContext(Dispatchers.IO) {
+    suspend fun getRecentlyAddedSongs(
+        limit: Int,
+        minDur: Long,
+        minSize: Long,
+        durEnabled: Boolean,
+        sizeEnabled: Boolean
+    ): List<Song> = withContext(Dispatchers.IO) {
+        if (!hasPermission()) {
+            android.util.Log.w("MediaStoreProvider", "getRecentlyAddedSongs: Missing permissions")
+            return@withContext emptyList()
+        }
         val songs = mutableListOf<Song>()
         val collection = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
             MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
@@ -176,21 +218,26 @@ class MediaStoreProvider @Inject constructor(
         val projection = arrayOf(
             MediaStore.Audio.Media._ID, MediaStore.Audio.Media.TITLE, MediaStore.Audio.Media.ARTIST,
             MediaStore.Audio.Media.ARTIST_ID, MediaStore.Audio.Media.ALBUM, MediaStore.Audio.Media.ALBUM_ID,
-            MediaStore.Audio.Media.DURATION, MediaStore.Audio.Media.DATA, MediaStore.Audio.Media.TRACK
+            MediaStore.Audio.Media.DURATION, MediaStore.Audio.Media.DATA, MediaStore.Audio.Media.TRACK,
+            MediaStore.Audio.Media.SIZE, MediaStore.Audio.Media.IS_MUSIC
         )
 
         val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
-
+        val sortColumn = MediaStore.Audio.Media.DATE_ADDED
+        
         val cursor = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            android.util.Log.e("MediaStoreProvider", "getRecentlyAddedSongs: Executing MODERN path (API 26+) on Version: ${com.pralayakaveri.orbitmusic.BuildConfig.VERSION_CODE}")
             val queryArgs = android.os.Bundle().apply {
-                putString(android.content.ContentResolver.QUERY_ARG_SQL_SELECTION, selection)
-                putString(android.content.ContentResolver.QUERY_ARG_SQL_SORT_ORDER, "${MediaStore.Audio.Media.DATE_ADDED} DESC")
-                putInt(android.content.ContentResolver.QUERY_ARG_LIMIT, limit)
+                putStringArray(android.content.ContentResolver.QUERY_ARG_SORT_COLUMNS, arrayOf(sortColumn))
+                putInt(android.content.ContentResolver.QUERY_ARG_SORT_DIRECTION, android.content.ContentResolver.QUERY_SORT_DIRECTION_DESCENDING)
+                // Increase limit slightly to account for non-music files that will be filtered in memory
+                putInt(android.content.ContentResolver.QUERY_ARG_LIMIT, limit + 20)
             }
             context.contentResolver.query(collection, projection, queryArgs, null)
         } else {
-            val sortOrder = "${MediaStore.Audio.Media.DATE_ADDED} DESC LIMIT $limit"
-            context.contentResolver.query(collection, projection, selection, null, sortOrder)
+            android.util.Log.e("MediaStoreProvider", "getRecentlyAddedSongs: Executing LEGACY path (API < 26) on Version: ${com.pralayakaveri.orbitmusic.BuildConfig.VERSION_CODE}")
+            val sortOrderLegacy = "$sortColumn DESC"
+            context.contentResolver.query(collection, projection, selection, null, sortOrderLegacy)
         }
 
         cursor?.use { cursor ->
@@ -203,8 +250,14 @@ class MediaStoreProvider @Inject constructor(
             val durationCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
             val dataCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)
             val trackCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TRACK)
+            val sizeCol = cursor.getColumnIndex(MediaStore.Audio.Media.SIZE)
 
             while (cursor.moveToNext()) {
+                val duration = cursor.getLong(durationCol)
+                val size = if (sizeCol != -1) cursor.getLong(sizeCol) else 0L
+                
+                if (!shouldIncludeTrack(duration, size, minDur, minSize, durEnabled, sizeEnabled)) continue
+
                 val id = cursor.getLong(idCol)
                 val albumId = cursor.getLong(albumIdCol)
                 val contentUri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id)
@@ -215,22 +268,29 @@ class MediaStoreProvider @Inject constructor(
                         id = id, title = cursor.getString(titleCol) ?: "Unknown",
                         artist = cursor.getString(artistCol) ?: "Unknown", artistId = cursor.getLong(artistIdCol),
                         album = cursor.getString(albumCol) ?: "Unknown", albumId = albumId,
-                        duration = cursor.getLong(durationCol), dataPath = cursor.getString(dataCol) ?: "",
+                        duration = duration, dataPath = cursor.getString(dataCol) ?: "",
                         trackNumber = cursor.getInt(trackCol), genre = null, 
                         uri = contentUri, albumArtUri = albumArtUri
                     )
                 )
+
+                if (songs.size >= limit) break
             }
         }
         songs
     }
 
-    fun getAllSongsFlow(): kotlinx.coroutines.flow.Flow<List<Song>> = kotlinx.coroutines.flow.flow {
-        emit(getAllSongs())
-    }
-
-    suspend fun getSongsByIds(ids: List<Long>): List<Song> = withContext(Dispatchers.IO) {
-        if (ids.isEmpty()) return@withContext emptyList()
+    suspend fun getSongsByIds(
+        ids: List<Long>,
+        minDur: Long,
+        minSize: Long,
+        durEnabled: Boolean,
+        sizeEnabled: Boolean
+    ): List<Song> = withContext(Dispatchers.IO) {
+        if (ids.isEmpty() || !hasPermission()) {
+            android.util.Log.w("MediaStoreProvider", "getSongsByIds: Empty IDs or Missing permissions")
+            return@withContext emptyList()
+        }
         
         val songs = mutableListOf<Song>()
         val collection = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
@@ -242,7 +302,8 @@ class MediaStoreProvider @Inject constructor(
         val projection = arrayOf(
             MediaStore.Audio.Media._ID, MediaStore.Audio.Media.TITLE, MediaStore.Audio.Media.ARTIST,
             MediaStore.Audio.Media.ARTIST_ID, MediaStore.Audio.Media.ALBUM, MediaStore.Audio.Media.ALBUM_ID,
-            MediaStore.Audio.Media.DURATION, MediaStore.Audio.Media.DATA, MediaStore.Audio.Media.TRACK
+            MediaStore.Audio.Media.DURATION, MediaStore.Audio.Media.DATA, MediaStore.Audio.Media.TRACK,
+            MediaStore.Audio.Media.SIZE
         )
 
         val idList = ids.joinToString(",")
@@ -258,8 +319,14 @@ class MediaStoreProvider @Inject constructor(
             val durationCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
             val dataCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)
             val trackCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TRACK)
+            val sizeCol = cursor.getColumnIndex(MediaStore.Audio.Media.SIZE)
 
             while (cursor.moveToNext()) {
+                val duration = cursor.getLong(durationCol)
+                val size = if (sizeCol != -1) cursor.getLong(sizeCol) else 0L
+                
+                if (!shouldIncludeTrack(duration, size, minDur, minSize, durEnabled, sizeEnabled)) continue
+
                 val id = cursor.getLong(idCol)
                 val albumId = cursor.getLong(albumIdCol)
                 songs.add(
@@ -281,5 +348,21 @@ class MediaStoreProvider @Inject constructor(
             }
         }
         songs
+    }
+
+    private fun shouldIncludeTrack(
+        durationMs: Long?,
+        sizeBytes: Long?,
+        minDurationMs: Long,
+        minSizeBytes: Long,
+        filterShortEnabled: Boolean,
+        filterTinyEnabled: Boolean
+    ): Boolean {
+        val d = durationMs ?: 0L
+        val s = sizeBytes ?: 0L
+
+        if (filterShortEnabled && d < minDurationMs) return false
+        if (filterTinyEnabled && s < minSizeBytes) return false
+        return true
     }
 }

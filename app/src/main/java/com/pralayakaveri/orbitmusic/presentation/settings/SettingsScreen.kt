@@ -100,7 +100,7 @@ fun SettingsScreen(
                     SettingSwitchItem(
                         icon = Icons.Default.Timer,
                         title = "Filter Short Tracks",
-                        subtitle = "Hide audio clips shorter than 30 seconds",
+                        subtitle = "Hide tracks shorter than 60 seconds",
                         checked = filterPrefs?.minDurationEnabled ?: true,
                         onCheckedChange = { viewModel.updateMinDurationEnabled(it) }
                     )

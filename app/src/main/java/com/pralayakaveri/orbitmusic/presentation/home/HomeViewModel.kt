@@ -27,12 +27,29 @@ import kotlinx.coroutines.flow.stateIn
 import com.pralayakaveri.orbitmusic.presentation.util.ScrollResetSignal
 import javax.inject.Inject
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.content.ContextCompat
+import dagger.hilt.android.qualifiers.ApplicationContext
+
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val musicRepository: MusicRepository,
     private val generateMoodPlaylistUseCase: com.pralayakaveri.orbitmusic.domain.usecase.GenerateMoodPlaylistUseCase,
-    private val workManager: WorkManager
+    private val workManager: WorkManager,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
+
+    private fun hasPermission(): Boolean {
+        val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            Manifest.permission.READ_MEDIA_AUDIO
+        } else {
+            Manifest.permission.READ_EXTERNAL_STORAGE
+        }
+        return ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+    }
 
     val songs: StateFlow<List<Song>> = musicRepository.getAllSongs()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -103,12 +120,17 @@ class HomeViewModel @Inject constructor(
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
     init {
-        loadData()
+        // Data loading is triggered by UI after permission gate passes
     }
 
+    private var isLoaded = false
+
     fun loadData() {
+        if (isLoaded || !hasPermission()) return
+        
         viewModelScope.launch {
             _isLoading.value = true
+            isLoaded = true
             
             // Load other core data in parallel
             supervisorScope {

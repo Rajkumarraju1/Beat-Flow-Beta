@@ -110,14 +110,14 @@ class LibraryIndexingEngineImpl @Inject constructor(
         try {
             _indexingState.value = IndexingState.SCANNING
             
-            var mediaStoreHeadless = mediaStoreProvider.getHeadlessSongs()
+            var mediaStoreHeadless = mediaStoreProvider.getHeadlessSongs(0, 0, false, false)
             
             // PROGRESSIVE READINESS GUARD: Handle OS-level MediaStore indexing delay
             if (mediaStoreHeadless.isEmpty() && reason == TriggerReason.INITIAL_SCAN) {
                 repeat(3) { attempt ->
                     android.util.Log.w("LibraryIndexingEngine", "MediaStore empty during INITIAL_SCAN. Retrying (Attempt ${attempt + 1})...")
                     delay(500L * (attempt + 1))
-                    mediaStoreHeadless = mediaStoreProvider.getHeadlessSongs()
+                    mediaStoreHeadless = mediaStoreProvider.getHeadlessSongs(0, 0, false, false)
                     if (mediaStoreHeadless.isNotEmpty()) return@repeat
                 }
             }
@@ -188,7 +188,7 @@ class LibraryIndexingEngineImpl @Inject constructor(
                 
                 if (idsToDeepScan.isNotEmpty()) {
                     android.util.Log.d("INDEX_DEBUG", "About to deep scan and insert ${idsToDeepScan.size} songs.")
-                    val deepSongs = mediaStoreProvider.getSongsByIds(idsToDeepScan)
+                    val deepSongs = mediaStoreProvider.getSongsByIds(idsToDeepScan, 0, 0, false, false)
                     
                     if (deepSongs.isNotEmpty()) {
                         android.util.Log.d("INDEX_DEBUG", "First song to be inserted: ${deepSongs.firstOrNull()?.title} (ID: ${deepSongs.firstOrNull()?.id})")

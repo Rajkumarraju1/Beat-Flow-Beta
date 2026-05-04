@@ -1,5 +1,6 @@
 package com.pralayakaveri.orbitmusic.presentation.home
 
+import android.os.Build
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -22,6 +23,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.produceState
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
@@ -98,6 +103,39 @@ fun HomeScreen(
     // Scroll States
     val songsListState = rememberLazyListState()
     val playlistsListState = rememberLazyListState()
+
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var hasPermission by remember { mutableStateOf(false) }
+
+    DisposableEffect(lifecycleOwner, context) {
+        val check = {
+            val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                android.Manifest.permission.READ_MEDIA_AUDIO
+            } else {
+                android.Manifest.permission.READ_EXTERNAL_STORAGE
+            }
+            androidx.core.content.ContextCompat.checkSelfPermission(context, permission) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
+
+        hasPermission = check()
+
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                hasPermission = check()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    LaunchedEffect(hasPermission) {
+        if (hasPermission) {
+            viewModel.loadData()
+        }
+    }
     val albumsGridState = rememberLazyGridState()
     val artistsGridState = rememberLazyGridState()
     val foldersListState = rememberLazyListState()
@@ -129,7 +167,6 @@ fun HomeScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
-    val context = LocalContext.current
 
     val selectedCollectionTitle by mainViewModel.selectedCollectionTitle.collectAsState()
 
@@ -247,6 +284,7 @@ fun HomeScreen(
                 snackbarHost = { SnackbarHost(snackbarHostState) },
                 topBar = {
                     TopAppBar(
+                        modifier = Modifier.statusBarsPadding(),
                         title = {
                             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                                 androidx.compose.foundation.Image(
@@ -644,7 +682,7 @@ fun HomeScreen(
                                                         onClick = { onSongClick(favorites, index) },
                                                         onFavoriteClick = { mainViewModel.toggleFavorite(song.id) },
                                                         onOptionsClick = {
-                                                            selectedSongForOptions = it
+                                                            selectedSongForOptions = song
                                                         }
                                                     )
                                                 }
