@@ -129,16 +129,22 @@ class MediaStoreProvider @Inject constructor(
         val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
         val sortOrderLegacy = "${MediaStore.Audio.Media.TITLE} ASC"
 
-        val cursor = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            android.util.Log.e("MediaStoreProvider", "getAllSongs: Executing MODERN path (API 26+) on Version: ${com.pralayakaveri.orbitmusic.BuildConfig.VERSION_CODE}")
-            val queryArgs = android.os.Bundle().apply {
-                putStringArray(android.content.ContentResolver.QUERY_ARG_SORT_COLUMNS, arrayOf(MediaStore.Audio.Media.TITLE))
-                putInt(android.content.ContentResolver.QUERY_ARG_SORT_DIRECTION, android.content.ContentResolver.QUERY_SORT_DIRECTION_ASCENDING)
+        val cursor = try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                android.util.Log.d("MediaStoreProvider", "getAllSongs: Querying modern path. Selection: $selection")
+                val queryArgs = android.os.Bundle().apply {
+                    putString(android.content.ContentResolver.QUERY_ARG_SQL_SELECTION, selection)
+                    putStringArray(android.content.ContentResolver.QUERY_ARG_SORT_COLUMNS, arrayOf(MediaStore.Audio.Media.TITLE))
+                    putInt(android.content.ContentResolver.QUERY_ARG_SORT_DIRECTION, android.content.ContentResolver.QUERY_SORT_DIRECTION_ASCENDING)
+                }
+                context.contentResolver.query(collection, projection, queryArgs, null)
+            } else {
+                android.util.Log.d("MediaStoreProvider", "getAllSongs: Querying legacy path. Selection: $selection, Order: $sortOrderLegacy")
+                context.contentResolver.query(collection, projection, selection, null, sortOrderLegacy)
             }
-            context.contentResolver.query(collection, projection, queryArgs, null)
-        } else {
-            android.util.Log.e("MediaStoreProvider", "getAllSongs: Executing LEGACY path (API < 26) on Version: ${com.pralayakaveri.orbitmusic.BuildConfig.VERSION_CODE}")
-            context.contentResolver.query(collection, projection, selection, null, sortOrderLegacy)
+        } catch (e: Exception) {
+            android.util.Log.e("MediaStoreProvider", "getAllSongs: Query failed. Selection: $selection", e)
+            context.contentResolver.query(collection, projection, selection, null, null)
         }
 
         cursor?.use { cursor ->
@@ -225,19 +231,24 @@ class MediaStoreProvider @Inject constructor(
         val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
         val sortColumn = MediaStore.Audio.Media.DATE_ADDED
         
-        val cursor = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            android.util.Log.e("MediaStoreProvider", "getRecentlyAddedSongs: Executing MODERN path (API 26+) on Version: ${com.pralayakaveri.orbitmusic.BuildConfig.VERSION_CODE}")
-            val queryArgs = android.os.Bundle().apply {
-                putStringArray(android.content.ContentResolver.QUERY_ARG_SORT_COLUMNS, arrayOf(sortColumn))
-                putInt(android.content.ContentResolver.QUERY_ARG_SORT_DIRECTION, android.content.ContentResolver.QUERY_SORT_DIRECTION_DESCENDING)
-                // Increase limit slightly to account for non-music files that will be filtered in memory
-                putInt(android.content.ContentResolver.QUERY_ARG_LIMIT, limit + 20)
+        val cursor = try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                android.util.Log.d("MediaStoreProvider", "getRecentlyAddedSongs: Querying modern path. Selection: $selection, Sort: $sortColumn, Limit: $limit")
+                val queryArgs = android.os.Bundle().apply {
+                    putString(android.content.ContentResolver.QUERY_ARG_SQL_SELECTION, selection)
+                    putStringArray(android.content.ContentResolver.QUERY_ARG_SORT_COLUMNS, arrayOf(sortColumn))
+                    putInt(android.content.ContentResolver.QUERY_ARG_SORT_DIRECTION, android.content.ContentResolver.QUERY_SORT_DIRECTION_DESCENDING)
+                    putInt(android.content.ContentResolver.QUERY_ARG_LIMIT, limit)
+                }
+                context.contentResolver.query(collection, projection, queryArgs, null)
+            } else {
+                android.util.Log.d("MediaStoreProvider", "getRecentlyAddedSongs: Querying legacy path. Selection: $selection, Order: $sortColumn DESC")
+                context.contentResolver.query(collection, projection, selection, null, "$sortColumn DESC")
             }
-            context.contentResolver.query(collection, projection, queryArgs, null)
-        } else {
-            android.util.Log.e("MediaStoreProvider", "getRecentlyAddedSongs: Executing LEGACY path (API < 26) on Version: ${com.pralayakaveri.orbitmusic.BuildConfig.VERSION_CODE}")
-            val sortOrderLegacy = "$sortColumn DESC"
-            context.contentResolver.query(collection, projection, selection, null, sortOrderLegacy)
+        } catch (e: Exception) {
+            android.util.Log.e("MediaStoreProvider", "getRecentlyAddedSongs: CRITICAL QUERY FAILURE. Selection: $selection, Limit: $limit", e)
+            // Final fallback: Basic query, no sort, handle everything manually in the loop
+            context.contentResolver.query(collection, projection, selection, null, null)
         }
 
         cursor?.use { cursor ->

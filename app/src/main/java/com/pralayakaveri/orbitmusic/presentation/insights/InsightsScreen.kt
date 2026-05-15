@@ -32,23 +32,37 @@ fun InsightsScreen(
 ) {
     val state by viewModel.state.collectAsState()
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Music Insights") },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                    }
-                }
-            )
-        }
-    ) { padding ->
-        if (state.isLoading) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+    Box(modifier = Modifier.fillMaxSize()) {
+        com.pralayakaveri.orbitmusic.presentation.components.AppBackground()
+        
+        Scaffold(
+            containerColor = Color.Transparent,
+            topBar = {
+                TopAppBar(
+                    title = { 
+                        Text(
+                            "Music Insights", 
+                            style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.ExtraBold),
+                            color = Color.White
+                        ) 
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent,
+                        titleContentColor = Color.White
+                    )
+                )
             }
-        } else {
+        ) { padding ->
+            if (state.isLoading) {
+                Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = Color(0xFF42C6B9))
+                }
+            } else {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
@@ -59,7 +73,8 @@ fun InsightsScreen(
                     Text(
                         "Your Top Genres",
                         style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
                     )
                     Spacer(Modifier.height(16.dp))
                     InsightChart(state.topGenres)
@@ -70,7 +85,8 @@ fun InsightsScreen(
                     Text(
                         "Top Artists",
                         style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
                     )
                     Spacer(Modifier.height(16.dp))
                     InsightChart(state.topArtists)
@@ -102,6 +118,7 @@ fun InsightsScreen(
         }
     }
 }
+}
 
 @Composable
 fun InsightChart(data: Map<String, Int>) {
@@ -113,8 +130,8 @@ fun InsightChart(data: Map<String, Int>) {
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text(label, style = MaterialTheme.typography.bodyMedium)
-                    Text("$count plays", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(label, style = MaterialTheme.typography.bodyMedium, color = Color.White)
+                    Text("$count plays", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                 }
                 Spacer(Modifier.height(4.dp))
                 Box(
@@ -122,7 +139,7 @@ fun InsightChart(data: Map<String, Int>) {
                         .fillMaxWidth(count.toFloat() / maxCount)
                         .height(8.dp)
                         .clip(RoundedCornerShape(4.dp))
-                        .background(MaterialTheme.colorScheme.primary)
+                        .background(Color(0xFF42C6B9))
                 )
             }
         }
@@ -137,8 +154,8 @@ fun DiscoverySection(
     onPlaySong: (Song) -> Unit
 ) {
     Column(Modifier.padding(vertical = 16.dp)) {
-        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White)
+        Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
         Spacer(Modifier.height(16.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             itemsIndexed(songs) { _, song ->

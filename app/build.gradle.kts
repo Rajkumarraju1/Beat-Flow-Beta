@@ -11,8 +11,8 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        versionCode = 27
-        versionName = "v1.0.0-rc12"
+        versionCode = 28
+        versionName = "v1.0.0-rc13"
         applicationId = "com.pralayakaveri.orbitmusic"
         minSdk = 24
         targetSdk = 35
@@ -77,6 +77,7 @@ dependencies {
 
     // Hilt
     implementation(libs.hilt.android)
+    implementation(libs.androidx.remote.creation.core)
     ksp(libs.hilt.compiler)
     implementation(libs.androidx.hilt.navigation.compose)
     implementation(libs.androidx.hilt.work)

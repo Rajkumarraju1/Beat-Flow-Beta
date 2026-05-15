@@ -156,12 +156,14 @@ fun CollectionDetailScreen(
                 }
 
                 itemsIndexed(songs, key = { _, song -> song.id }) { index, song ->
+                    val isItemCurrent = song.id == currentSongState.value?.id
+                    val isItemPlaying = isPlayingState.value
                     SongItem(
                         song = song,
                         isFavorite = favoriteIds.contains(song.id),
                         displayUri = customArtworks[song.id] ?: song.albumArtUri,
-                        isCurrent = { song.id == currentSongState.value?.id },
-                        isPlaying = { isPlayingState.value },
+                        isCurrent = isItemCurrent,
+                        isPlaying = isItemPlaying,
                         onClick = { onSongClick(songs, index) },
                         onFavoriteClick = { mainViewModel.toggleFavorite(targetSongId = song.id) },
                         onOptionsClick = onOptionsClick

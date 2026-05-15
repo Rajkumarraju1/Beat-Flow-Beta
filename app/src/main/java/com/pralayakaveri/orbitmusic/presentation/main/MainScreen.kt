@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.systemBars
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ModalBottomSheet
@@ -36,6 +35,7 @@ import android.content.pm.PackageManager
 import com.pralayakaveri.orbitmusic.presentation.navigation.NavGraph
 import com.pralayakaveri.orbitmusic.presentation.player.MiniPlayer
 import com.pralayakaveri.orbitmusic.presentation.player.PlayerScreen
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
@@ -110,26 +110,30 @@ fun MainScreen(
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
+        containerColor = androidx.compose.ui.graphics.Color.Transparent, // Allow background to show
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { paddingValues ->
         Box(modifier = Modifier.fillMaxSize()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(bottom = if (showMiniPlayer) miniPlayerHeightDp else 0.dp)
-            ) {
+            // 1. Persistent NavGraph (Always Full Screen, No Padding Shifts)
+            Box(modifier = Modifier.fillMaxSize()) {
                 NavGraph(
                     navController = navController,
                     mainViewModel = mainViewModel
                 )
             }
             
-            if (showMiniPlayer) {
+            // 2. Floating Overlay MiniPlayer (Sits ABOVE NavGraph, does NOT affect layout)
+            androidx.compose.animation.AnimatedVisibility(
+                visible = showMiniPlayer,
+                modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter),
+                enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInVertically { it },
+                exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.slideOutVertically { it }
+            ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .align(androidx.compose.ui.Alignment.BottomCenter)
                         .navigationBarsPadding()
+                        .padding(start = 8.dp, end = 8.dp, bottom = 0.dp) // Corrected explicit padding syntax
                 ) {
                     MiniPlayer(
                         modifier = Modifier.onGloballyPositioned { coordinates ->
@@ -150,27 +154,27 @@ fun MainScreen(
         }
     }
 
-        if (showPlayerSheet && currentSong != null) {
-            ModalBottomSheet(
-                onDismissRequest = { showPlayerSheet = false },
-                sheetState = sheetState,
-                contentWindowInsets = { androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0) },
-                dragHandle = null,
-                containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface,
-                scrimColor = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.5f),
-                shape = androidx.compose.ui.graphics.RectangleShape
-            ) {
-                PlayerScreen(
-                    song = currentSong!!,
-                    mainViewModel = mainViewModel,
-                    isPlaying = isPlaying,
-                    currentPosition = currentPosition,
-                    onPlayPause = { mainViewModel.togglePlayPause() },
-                    onNext = { mainViewModel.skipToNext() },
-                    onPrevious = { mainViewModel.skipToPrevious() },
-                    onSeek = { position -> mainViewModel.seekTo(position) },
-                    onCollapse = { showPlayerSheet = false }
-                )
+    if (showPlayerSheet && currentSong != null) {
+        ModalBottomSheet(
+            onDismissRequest = { showPlayerSheet = false },
+            sheetState = sheetState,
+            contentWindowInsets = { androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0) },
+            dragHandle = null,
+            containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface,
+            scrimColor = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.5f),
+            shape = androidx.compose.ui.graphics.RectangleShape
+        ) {
+            PlayerScreen(
+                song = currentSong!!,
+                mainViewModel = mainViewModel,
+                isPlaying = isPlaying,
+                currentPosition = currentPosition,
+                onPlayPause = { mainViewModel.togglePlayPause() },
+                onNext = { mainViewModel.skipToNext() },
+                onPrevious = { mainViewModel.skipToPrevious() },
+                onSeek = { position -> mainViewModel.seekTo(position) },
+                onCollapse = { showPlayerSheet = false }
+            )
         }
     }
 }

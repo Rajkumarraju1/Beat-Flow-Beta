@@ -3,16 +3,21 @@ package com.pralayakaveri.orbitmusic.presentation.components
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalView
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
-import androidx.compose.runtime.withFrameNanos
 import com.pralayakaveri.orbitmusic.presentation.util.ScrollResetSignal
 
+/**
+ * Production-Grade Resilient Reset Handler.
+ * 
+ * This handler implements a multi-stage synchronization model to ensure deterministic 
+ * scroll resets during heavy UI-thread load (confirmed by Logcat Davey frame stalls).
+ */
 @Composable
 fun ListScrollResetHandler(
     listState: LazyListState,
-    itemCount: Int,
+    dataSignature: List<Long>,
     signal: ScrollResetSignal?,
     threshold: Int = 15
 ) {
@@ -20,18 +25,18 @@ fun ListScrollResetHandler(
         firstVisibleItemIndex = { listState.firstVisibleItemIndex },
         firstVisibleItemScrollOffset = { listState.firstVisibleItemScrollOffset },
         totalItemsCount = { listState.layoutInfo.totalItemsCount },
-        expectedCount = itemCount,
+        visibleItemsIds = { listState.layoutInfo.visibleItemsInfo.map { it.key as? Long ?: -1L } },
+        isViewportMeasured = { listState.layoutInfo.visibleItemsInfo.isNotEmpty() },
         scrollToItem = { listState.scrollToItem(0) },
-        animateScrollToItem = { listState.animateScrollToItem(0) },
-        signal = signal,
-        threshold = threshold
+        dataSignature = dataSignature,
+        signal = signal
     )
 }
 
 @Composable
 fun GridScrollResetHandler(
     gridState: androidx.compose.foundation.lazy.grid.LazyGridState,
-    itemCount: Int,
+    dataSignature: List<Long>,
     signal: ScrollResetSignal?,
     threshold: Int = 15
 ) {
@@ -39,11 +44,11 @@ fun GridScrollResetHandler(
         firstVisibleItemIndex = { gridState.firstVisibleItemIndex },
         firstVisibleItemScrollOffset = { gridState.firstVisibleItemScrollOffset },
         totalItemsCount = { gridState.layoutInfo.totalItemsCount },
-        expectedCount = itemCount,
+        visibleItemsIds = { gridState.layoutInfo.visibleItemsInfo.map { it.key as? Long ?: -1L } },
+        isViewportMeasured = { gridState.layoutInfo.visibleItemsInfo.isNotEmpty() },
         scrollToItem = { gridState.scrollToItem(0) },
-        animateScrollToItem = { gridState.animateScrollToItem(0) },
-        signal = signal,
-        threshold = threshold
+        dataSignature = dataSignature,
+        signal = signal
     )
 }
 
@@ -52,59 +57,60 @@ private fun HandleReset(
     firstVisibleItemIndex: () -> Int,
     firstVisibleItemScrollOffset: () -> Int,
     totalItemsCount: () -> Int,
-    expectedCount: Int,
+    visibleItemsIds: () -> List<Long>,
+    isViewportMeasured: () -> Boolean,
     scrollToItem: suspend () -> Unit,
-    animateScrollToItem: suspend () -> Unit,
-    signal: ScrollResetSignal?,
-    threshold: Int
+    dataSignature: List<Long>,
+    signal: ScrollResetSignal?
 ) {
-    var lastHandledId by remember { mutableStateOf(-1L) }
+    var lastHandledSignalId by remember { mutableStateOf(-1L) }
     var isFirstComposition by remember { mutableStateOf(true) }
     val view = LocalView.current
 
-    LaunchedEffect(signal?.id) {
+    // STAGE 1: SIGNAL Gating (Auto-Cancellation via LaunchedEffect)
+    LaunchedEffect(signal?.id, dataSignature) {
         val s = signal ?: return@LaunchedEffect
+        val expectedFirstId = dataSignature.firstOrNull() ?: return@LaunchedEffect
         
+        // 1. Process Restoration Guard
         if (isFirstComposition) {
             isFirstComposition = false
-            lastHandledId = s.id
+            lastHandledSignalId = s.id
             return@LaunchedEffect
         }
 
-        if (s.id == lastHandledId) return@LaunchedEffect
-        lastHandledId = s.id
+        // 2. One-Shot Idempotency Guard
+        if (s.id == lastHandledSignalId) return@LaunchedEffect
         
-        // Phase 1: Wait for Dataset Sync (up to 500ms)
-        // Critical for Search/Filter where item count changes
-        val isSynced = withTimeoutOrNull(500L) {
-            snapshotFlow { totalItemsCount() }.first { it == expectedCount }
+        // STAGE 2: Viewport Identity Confirmation (The "Davey!" Fix)
+        // We wait up to 500ms for the expected item to actually mount in the viewport.
+        val syncSuccess = withTimeoutOrNull(500L) {
+            snapshotFlow { visibleItemsIds() }
+                .filter { ids -> ids.contains(expectedFirstId) }
+                .first()
         } != null
-        
-        if (!isSynced) return@LaunchedEffect
-        if (expectedCount == 0) return@LaunchedEffect
-        
-        // Phase 2: Frame Sync (Crucial for Sort where count is identical)
-        // Ensures layout offsets are recalculated before we read them
-        withFrameNanos { }
 
-        // Phase 3: Stabilization Delay (only for heavy lists)
-        if (expectedCount > 200) {
-            delay(50)
-        }
-
-        // Phase 4: Execution
-        val index = firstVisibleItemIndex()
-        val offset = firstVisibleItemScrollOffset()
-
-        if (index == 0 && offset == 0) return@LaunchedEffect
-
-        if (index > threshold) {
-            scrollToItem()
+        // STAGE 3: Fallback & Context Verification
+        // If timeout occurred, we ONLY force reset if the layout is non-empty.
+        val shouldExecute = if (syncSuccess) {
+            true
         } else {
-            animateScrollToItem()
+            // Fallback: Verify we have actual data and a measured viewport
+            totalItemsCount() > 0 && isViewportMeasured()
         }
 
-        // Accessibility announcement
-        view.announceForAccessibility("List updated. Showing latest items.")
+        if (shouldExecute) {
+            // STAGE 4: One-Shot Mark
+            lastHandledSignalId = s.id
+            
+            // STAGE 5: Execution
+            val index = firstVisibleItemIndex()
+            val offset = firstVisibleItemScrollOffset()
+
+            if (index > 0 || offset > 0) {
+                scrollToItem()
+                view.announceForAccessibility("List updated. Showing latest items.")
+            }
+        }
     }
 }

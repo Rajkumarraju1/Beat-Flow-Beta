@@ -754,34 +754,71 @@ fun PlayerScreen(
 
                     Spacer(modifier = Modifier.height(32.dp))
 
-                    // Progress Slider
+                    // Progress Slider (Cinematic Orbital Thumb Design)
                     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp)) {
                         val progress = if (duration > 0) currentPosition.toFloat() / duration.toFloat() else 0f
                         Box(modifier = Modifier.fillMaxWidth().height(48.dp), contentAlignment = Alignment.Center) {
-                            Canvas(modifier = Modifier.fillMaxWidth().height(4.dp)) {
+                            Canvas(modifier = Modifier.fillMaxWidth().height(32.dp)) {
                                 val canvasWidth = this.size.width
                                 val canvasHeight = this.size.height
                                 val centerY = canvasHeight / 2
+                                val thumbX = canvasWidth * progress
                                 
+                                // 1. Inactive Track
                                 drawLine(
                                     color = Color.White.copy(alpha = 0.1f),
                                     start = Offset(0f, centerY),
                                     end = Offset(canvasWidth, centerY),
-                                    strokeWidth = 4.dp.toPx(),
+                                    strokeWidth = 2.dp.toPx(),
                                     cap = StrokeCap.Round
                                 )
+                                
+                                // 2. Active Track
                                 drawLine(
                                     color = vibrantColor,
                                     start = Offset(0f, centerY),
-                                    end = Offset(canvasWidth * progress, centerY),
-                                    strokeWidth = 4.dp.toPx(),
-                                    cap = StrokeCap.Round
+                                    end = Offset(thumbX, centerY),
+                                    strokeWidth = 2.dp.toPx(),
+                                    cap = StrokeCap.Butt // Butt cap for clean connection to thumb
+                                )
+                                
+                                // 3. Cinematic Orbital Thumb (Concentric Layers)
+                                // Layer A: Large Outer Glow (Halo)
+                                drawCircle(
+                                    color = vibrantColor.copy(alpha = 0.15f),
+                                    radius = 16.dp.toPx(),
+                                    center = Offset(thumbX, centerY)
+                                )
+                                
+                                // Layer B: Inner Soft Glow
+                                drawCircle(
+                                    color = vibrantColor.copy(alpha = 0.3f),
+                                    radius = 10.dp.toPx(),
+                                    center = Offset(thumbX, centerY)
+                                )
+                                
+                                // Layer C: Solid Vibrant Ring
+                                drawCircle(
+                                    color = vibrantColor.copy(alpha = 0.8f),
+                                    radius = 5.dp.toPx(),
+                                    center = Offset(thumbX, centerY)
+                                )
+                                
+                                // Layer D: Bright White Core
+                                drawCircle(
+                                    color = Color.White,
+                                    radius = 3.dp.toPx(),
+                                    center = Offset(thumbX, centerY)
                                 )
                             }
                             Slider(
                                 value = progress,
                                 onValueChange = { onSeek((it * duration).toLong()) },
-                                colors = SliderDefaults.colors(thumbColor = Color.Transparent, activeTrackColor = Color.Transparent, inactiveTrackColor = Color.Transparent),
+                                colors = SliderDefaults.colors(
+                                    thumbColor = Color.Transparent, 
+                                    activeTrackColor = Color.Transparent, 
+                                    inactiveTrackColor = Color.Transparent
+                                ),
                                 modifier = Modifier.fillMaxWidth().height(48.dp)
                             )
                         }

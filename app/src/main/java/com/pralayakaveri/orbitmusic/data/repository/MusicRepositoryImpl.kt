@@ -41,6 +41,8 @@ class MusicRepositoryImpl @Inject constructor(
     private val filterPreferencesManager: com.pralayakaveri.orbitmusic.domain.util.FilterPreferencesManager
 ) : MusicRepository {
 
+    private val songReferenceMap = mutableMapOf<Long, Song>()
+
     private var cachedSongs: List<Song> = emptyList()
     private var cachedAlbums: List<Album> = emptyList()
     private var cachedArtists: List<Artist> = emptyList()
@@ -183,6 +185,7 @@ class MusicRepositoryImpl @Inject constructor(
         )
     }
 
+    @kotlinx.coroutines.ExperimentalCoroutinesApi
     override fun getAllSongs(): Flow<List<Song>> {
         return filterPreferencesManager.filterFlow
             .distinctUntilChanged()
@@ -199,7 +202,19 @@ class MusicRepositoryImpl @Inject constructor(
                         }
                     }
                     IndexingMode.ACTIVE -> librarySongDao.getAllSongs().map { entities ->
-                        entities.map { it.toDomain() }.filter { song ->
+                        entities.map { entity ->
+                            val existing = songReferenceMap[entity.id]
+                            if (existing != null && 
+                                existing.title == entity.title && 
+                                existing.artist == entity.artist && 
+                                existing.album == entity.album &&
+                                existing.dataPath == entity.dataPath &&
+                                existing.duration == entity.duration) {
+                                existing
+                            } else {
+                                entity.toDomain().also { songReferenceMap[entity.id] = it }
+                            }
+                        }.filter { song ->
                             shouldIncludeTrackInMemory(song, filters)
                         }
                     }

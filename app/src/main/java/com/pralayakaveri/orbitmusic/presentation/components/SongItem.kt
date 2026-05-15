@@ -33,51 +33,37 @@ fun SongItem(
     song: Song,
     isFavorite: Boolean,
     displayUri: Any?,
-    isCurrent: () -> Boolean,
-    isPlaying: () -> Boolean,
+    isCurrent: Boolean,
+    isPlaying: Boolean,
     onClick: () -> Unit,
     onFavoriteClick: () -> Unit,
     onOptionsClick: (Song) -> Unit
 ) {
-    val borderColor = if (isCurrent()) Color(0xFF42C6B9) else Color.Transparent
-    var isAnimating by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(
-        targetValue = if (isAnimating) 1.3f else 1f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
-        ),
-        finishedListener = { isAnimating = false },
-        label = "favorite_scale"
-    )
     val context = LocalContext.current
+    
+    // Scale animation for favorite button
+    val favoriteScale by animateFloatAsState(
+        targetValue = if (isFavorite) 1.2f else 1.0f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        label = "FavoriteScale"
+    )
 
-    val imageRequest = remember(displayUri) {
-        ImageRequest.Builder(context)
-            .data(displayUri)
-            .size(120)
-            .crossfade(true)
-            .build()
-    }
-
-    val cleanTitle = remember(song.title) { song.title.cleanSongTitle() }
-    val timeDuration = remember(song.duration) { formatTime(song.duration) }
-
-    Card(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
-            .shadow(
-                elevation = if (isCurrent()) 8.dp else 0.dp,
-                shape = RoundedCornerShape(20.dp),
-                spotColor = if (isCurrent()) Color(0xFF42C6B9) else Color.Black
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .then(
+                if (isCurrent) {
+                    Modifier.border(
+                        1.2.dp, 
+                        Color(0xFF42C6B9).copy(alpha = 0.9f), 
+                        RoundedCornerShape(20.dp)
+                    )
+                } else Modifier
             )
-            .border(if (isCurrent()) 1.5.dp else 0.dp, borderColor, RoundedCornerShape(20.dp))
             .clickable { onClick() },
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isCurrent()) Color(0xFF252530) else Color(0xFF1E1E24)
-        )
+        color = Color(0xFF1E1E24).copy(alpha = 0.8f) // Unified Midnight Void background for all cards
     ) {
         Row(
             modifier = Modifier
@@ -85,63 +71,97 @@ fun SongItem(
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box {
+            // Album Art / Visualizer Container
+            Box(
+                modifier = Modifier
+                    .size(64.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xFF1E1E24))
+                    .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(14.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                val imageRequest = remember(displayUri) {
+                    ImageRequest.Builder(context)
+                        .data(displayUri)
+                        .size(250)
+                        .crossfade(true)
+                        .build()
+                }
                 AsyncImage(
                     model = imageRequest,
                     contentDescription = "Album Art",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .size(56.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color.DarkGray)
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
                 )
-                if (isCurrent() && isPlaying()) {
-                    MusicVisualizerIcon(
+                
+                if (isCurrent && isPlaying) {
+                    Box(
                         modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = 8.dp)
-                    )
+                            .fillMaxSize()
+                            .padding(bottom = 6.dp),
+                        contentAlignment = Alignment.BottomCenter
+                    ) {
+                        MusicVisualizerIcon(
+                            modifier = Modifier.size(24.dp),
+                            color = Color(0xFF42C6B9)
+                        )
+                    }
                 }
             }
+
             Spacer(modifier = Modifier.width(16.dp))
+
+            // Metadata Column
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = cleanTitle,
-                    style = MaterialTheme.typography.bodyLarge.copy(
-                        fontWeight = if (isCurrent()) FontWeight.Bold else FontWeight.Medium
+                    text = song.title.cleanSongTitle(),
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = if (isCurrent) Color(0xFF42C6B9) else Color.White
                     ),
-                    color = if (isCurrent()) Color(0xFF42C6B9) else Color.White.copy(alpha = 0.9f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "${song.artist} • $timeDuration",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.Gray.copy(alpha = 0.8f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = song.artist,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.Gray,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    Text(
+                        text = " • ${formatTime(song.duration ?: 0)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray.copy(alpha = 0.6f)
+                    )
+                }
             }
 
-            Row {
-                IconButton(onClick = {
-                    isAnimating = true
-                    onFavoriteClick()
-                }) {
+            // Actions
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.End
+            ) {
+                IconButton(
+                    onClick = onFavoriteClick,
+                    modifier = Modifier.scale(favoriteScale)
+                ) {
                     Icon(
                         imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                         contentDescription = "Favorite",
-                        tint = if (isFavorite) Color(0xFF42C6B9) else Color.Gray.copy(alpha = 0.7f),
-                        modifier = Modifier.scale(scale)
+                        tint = if (isFavorite) Color(0xFF42C6B9) else Color.Gray.copy(alpha = 0.5f),
+                        modifier = Modifier.size(24.dp)
                     )
                 }
-
                 IconButton(onClick = { onOptionsClick(song) }) {
                     Icon(
                         imageVector = Icons.Default.MoreVert,
                         contentDescription = "Options",
-                        tint = Color.Gray.copy(alpha = 0.7f)
+                        tint = Color.Gray.copy(alpha = 0.5f),
+                        modifier = Modifier.size(24.dp)
                     )
                 }
             }

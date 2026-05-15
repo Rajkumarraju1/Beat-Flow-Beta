@@ -11,38 +11,70 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import kotlin.random.Random
 
 @Composable
-fun StarBackground(modifier: Modifier = Modifier) {
+fun StarBackground(
+    modifier: Modifier = Modifier,
+    velocity: Float = 0f // 0f to 1f (Travel intensity)
+) {
     val infiniteTransition = rememberInfiniteTransition(label = "stars")
     val stars = remember {
-        List(100) {
+        List(250) { // Increased count for dense streaks
+            val isFar = Random.nextFloat() > 0.3f
             Star(
-                x = Random.nextFloat(),
-                y = Random.nextFloat(),
-                size = Random.nextFloat() * 2f + 1f,
-                alpha = Random.nextFloat(),
-                speed = Random.nextFloat() * 0.001f + 0.0005f
+                x = Random.nextFloat() * 2f - 1f, // Normalized -1 to 1
+                y = Random.nextFloat() * 2f - 1f,
+                z = Random.nextFloat() * 2f, // Depth
+                size = if (isFar) (0.5f + Random.nextFloat() * 1f) else (1.5f + Random.nextFloat() * 2.5f),
+                alpha = if (isFar) (0.2f + Random.nextFloat() * 0.3f) else (0.4f + Random.nextFloat() * 0.5f),
+                color = when (Random.nextInt(3)) {
+                    0 -> Color(0xFFADD8E6)
+                    1 -> Color(0xFFFFDAB9)
+                    else -> Color.White
+                }
             )
         }
     }
 
-    val animationProgress by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(10000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "starProgress"
+    val drift by infiniteTransition.animateFloat(
+        initialValue = 0f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(40000, easing = LinearEasing)),
+        label = "starDrift"
     )
 
     Canvas(modifier = modifier.fillMaxSize()) {
+        val canvasCenterX = size.width / 2f
+        val canvasCenterY = size.height / 2f
+
         stars.forEach { star ->
-            val currentY = (star.y + animationProgress * star.speed * 100) % 1f
-            drawCircle(
-                color = Color.White.copy(alpha = star.alpha),
-                radius = star.size,
-                center = Offset(star.x * size.width, currentY * size.height)
-            )
+            // 3D Projection-ish logic for radial expansion
+            val speedFactor = 1f + velocity * 15f
+            val px = star.x * (1f + drift * 0.1f * speedFactor)
+            val py = star.y * (1f + drift * 0.1f * speedFactor)
+            
+            // Map normalized to screen
+            val startX = canvasCenterX + star.x * (size.width / 2f)
+            val startY = canvasCenterY + star.y * (size.height / 2f)
+            
+            // During velocity, stars stretch away from center
+            if (velocity > 0.05f) {
+                val length = 20f * velocity * (1f + star.z)
+                val angle = kotlin.math.atan2(star.y, star.x)
+                val endX = startX + kotlin.math.cos(angle) * length
+                val endY = startY + kotlin.math.sin(angle) * length
+                
+                drawLine(
+                    color = star.color.copy(alpha = star.alpha * (1f - velocity * 0.5f)),
+                    start = Offset(startX, startY),
+                    end = Offset(endX, endY),
+                    strokeWidth = star.size * (1f + velocity),
+                    cap = androidx.compose.ui.graphics.StrokeCap.Round
+                )
+            } else {
+                drawCircle(
+                    color = star.color.copy(alpha = star.alpha),
+                    radius = star.size,
+                    center = Offset(startX, startY)
+                )
+            }
         }
     }
 }
@@ -50,7 +82,8 @@ fun StarBackground(modifier: Modifier = Modifier) {
 private data class Star(
     val x: Float,
     val y: Float,
+    val z: Float,
     val size: Float,
     val alpha: Float,
-    val speed: Float
+    val color: Color
 )

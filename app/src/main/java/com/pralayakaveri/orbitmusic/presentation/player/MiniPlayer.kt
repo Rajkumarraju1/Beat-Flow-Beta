@@ -24,6 +24,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.draw.shadow
 import com.pralayakaveri.orbitmusic.domain.model.Song
 import com.pralayakaveri.orbitmusic.domain.util.cleanSongTitle
 
@@ -43,10 +44,12 @@ fun MiniPlayer(
     var offsetX by remember { mutableStateOf(0f) }
     val progress = if (song.duration > 0) currentPosition.toFloat() / song.duration else 0f
 
-    Card(
+    Surface(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .height(72.dp) // Sleeker height
+            .shadow(elevation = 12.dp, shape = RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(20.dp))
             .pointerInput(Unit) {
                 detectHorizontalDragGestures(
                     onDragEnd = {
@@ -63,48 +66,51 @@ fun MiniPlayer(
                 }
             }
             .clickable(enabled = enabled) { onExpand() },
-        shape = RoundedCornerShape(16.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = Color.White.copy(alpha = 0.05f)
-        ),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+        color = Color(0xFF1E1E24).copy(alpha = 0.95f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
     ) {
-        Box(modifier = Modifier.fillMaxWidth()) {
-            // Hairline Progress Indicator
-            LinearProgressIndicator(
-                progress = { progress },
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Mini Progress Line (Hairline Bottom)
+            androidx.compose.foundation.Canvas(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(1.dp)
-                    .align(Alignment.TopCenter),
-                color = Color(0xFF42C6B9),
-                trackColor = Color.Transparent,
-                strokeCap = androidx.compose.ui.graphics.StrokeCap.Butt
-            )
+                    .height(2.dp)
+                    .align(Alignment.BottomCenter)
+            ) {
+                drawLine(
+                    color = Color(0xFF42C6B9), // Restored original teal for progress
+                    start = androidx.compose.ui.geometry.Offset(0f, 0f),
+                    end = androidx.compose.ui.geometry.Offset(size.width * progress, 0f),
+                    strokeWidth = 2.dp.toPx()
+                )
+            }
 
             Row(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(12.dp),
+                    .fillMaxSize()
+                    .padding(horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Album Art (Rounded)
                 AsyncImage(
                     model = customArtworkUri ?: song.albumArtUri,
                     contentDescription = "Album Art",
                     contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                     modifier = Modifier
-                        .size(48.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
-                        .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                        .size(52.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color.White.copy(alpha = 0.05f))
+                        .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(12.dp))
                 )
+                
                 Spacer(modifier = Modifier.width(16.dp))
+                
+                // Metadata (Centered vertically)
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = song.title.cleanSongTitle(),
-                        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
+                        color = Color.White,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -112,21 +118,25 @@ fun MiniPlayer(
                         text = song.artist,
                         style = MaterialTheme.typography.bodySmall,
                         maxLines = 1,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f),
+                        color = Color.Gray,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
+                
+                // Play/Pause Button (Circular with glow)
                 IconButton(
                     onClick = onPlayPause,
                     enabled = enabled,
                     modifier = Modifier
+                        .size(44.dp)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.1f))
+                        .background(Color.Gray.copy(alpha = 0.15f))
                 ) {
                     Icon(
                         imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = "Play/Pause",
-                        tint = MaterialTheme.colorScheme.onSecondaryContainer
+                        tint = Color.Gray,
+                        modifier = Modifier.size(28.dp)
                     )
                 }
             }
